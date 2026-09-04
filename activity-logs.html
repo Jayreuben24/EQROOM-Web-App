@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,12 +8,18 @@
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="Styles/styles-web.css">
-    <script src="Scripts/animations.js" defer></script> 
+    <script src="Scripts/animations.js" defer></script>
+    <script type="module">
+        import { requireAuth } from './Scripts/auth-guard.js';
+        requireAuth();
+    </script>
 </head>
+
 <body>
     <!-- Decorative background glass orbs -->
     <div class="bg-blob bg-blob-1"></div>
@@ -28,7 +35,8 @@
                 <h1>CO-EQROOM</h1>
                 <p>IoT-Based Equipment Room<br>Management System</p>
             </div>
-            <button class="btn-sidebar-collapse" id="sidebarCollapseBtn" aria-label="Toggle sidebar width" title="Minimize Sidebar">
+            <button class="btn-sidebar-collapse" id="sidebarCollapseBtn" aria-label="Toggle sidebar width"
+                title="Minimize Sidebar">
                 <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i>
             </button>
         </div>
@@ -107,13 +115,15 @@
                         <i data-lucide="user" style="color: #6B7280; width: 18px; height: 18px;"></i>
                     </div>
                     <span style="font-weight: 700; font-size: 0.88rem;">Admin</span>
-                    <i data-lucide="chevron-down" style="width: 14px; height: 14px; color: var(--color-text-muted);"></i>
+                    <i data-lucide="chevron-down"
+                        style="width: 14px; height: 14px; color: var(--color-text-muted);"></i>
                 </div>
             </div>
         </header>
 
         <!-- Activity Overview Metric Cards -->
-        <section style="display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;">
+        <section
+            style="display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;">
             <div class="metrics-grid" style="flex: 1;">
                 <div class="metric-card">
                     <div class="metric-icon-box metric-icon-orange">
@@ -122,7 +132,8 @@
                     <div class="metric-data">
                         <div class="metric-label">Today's Logs</div>
                         <div class="metric-value">48</div>
-                        <span style="font-size: 0.78rem; color: var(--color-success); font-weight: 600;">&uarr; Normal Activity</span>
+                        <span style="font-size: 0.78rem; color: var(--color-success); font-weight: 600;">&uarr; Normal
+                            Activity</span>
                     </div>
                 </div>
 
@@ -155,7 +166,8 @@
                     <div class="metric-data">
                         <div class="metric-label">Cloud Backups</div>
                         <div class="metric-value">7</div>
-                        <span style="font-size: 0.78rem; color: var(--color-success); font-weight: 600;">100% Synced</span>
+                        <span style="font-size: 0.78rem; color: var(--color-success); font-weight: 600;">100%
+                            Synced</span>
                     </div>
                 </div>
             </div>
@@ -169,7 +181,8 @@
         <!-- Activity Logs Master Table Panel -->
         <section class="glass-panel">
             <div class="table-header-bar">
-                <h3 style="font-size: 1rem; font-weight: 800; text-transform: uppercase;">Audit Trail & Event Records</h3>
+                <h3 style="font-size: 1rem; font-weight: 800; text-transform: uppercase;">Audit Trail & Event Records
+                </h3>
                 <div class="search-filter-wrapper">
                     <div class="search-box">
                         <i data-lucide="search"></i>
@@ -214,7 +227,8 @@
                             <td><span class="status-tag active">Granted</span></td>
                             <td style="color: var(--color-text-secondary);">May 25, 2026 10:29 AM</td>
                             <td style="text-align: center;">
-                                <button class="btn-icon-action edit" title="View snapshot" aria-label="View Snapshot"><i data-lucide="eye" style="width: 15px; height: 15px;"></i></button>
+                                <button class="btn-icon-action edit" title="View snapshot" aria-label="View Snapshot"><i
+                                        data-lucide="eye" style="width: 15px; height: 15px;"></i></button>
                             </td>
                         </tr>
                         <tr>
@@ -232,7 +246,8 @@
                             <td><span class="status-tag borrowed">Borrowed</span></td>
                             <td style="color: var(--color-text-secondary);">May 25, 2026 10:20 AM</td>
                             <td style="text-align: center;">
-                                <button class="btn-icon-action edit" title="View details" aria-label="View Details"><i data-lucide="file-text" style="width: 15px; height: 15px;"></i></button>
+                                <button class="btn-icon-action edit" title="View details" aria-label="View Details"><i
+                                        data-lucide="file-text" style="width: 15px; height: 15px;"></i></button>
                             </td>
                         </tr>
                         <tr>
@@ -250,7 +265,8 @@
                             <td><span class="status-tag returned">Returned</span></td>
                             <td style="color: var(--color-text-secondary);">May 25, 2026 09:45 AM</td>
                             <td style="text-align: center;">
-                                <button class="btn-icon-action edit" title="View details" aria-label="View Details"><i data-lucide="file-text" style="width: 15px; height: 15px;"></i></button>
+                                <button class="btn-icon-action edit" title="View details" aria-label="View Details"><i
+                                        data-lucide="file-text" style="width: 15px; height: 15px;"></i></button>
                             </td>
                         </tr>
                         <tr>
@@ -268,7 +284,8 @@
                             <td><span class="status-tag active">Granted</span></td>
                             <td style="color: var(--color-text-secondary);">May 25, 2026 09:30 AM</td>
                             <td style="text-align: center;">
-                                <button class="btn-icon-action edit" title="View snapshot" aria-label="View Snapshot"><i data-lucide="eye" style="width: 15px; height: 15px;"></i></button>
+                                <button class="btn-icon-action edit" title="View snapshot" aria-label="View Snapshot"><i
+                                        data-lucide="eye" style="width: 15px; height: 15px;"></i></button>
                             </td>
                         </tr>
                         <tr>
@@ -286,7 +303,8 @@
                             <td><span class="status-tag active">Success</span></td>
                             <td style="color: var(--color-text-secondary);">May 25, 2026 08:00 AM</td>
                             <td style="text-align: center;">
-                                <button class="btn-icon-action edit" title="View log" aria-label="View Log"><i data-lucide="file-text" style="width: 15px; height: 15px;"></i></button>
+                                <button class="btn-icon-action edit" title="View log" aria-label="View Log"><i
+                                        data-lucide="file-text" style="width: 15px; height: 15px;"></i></button>
                             </td>
                         </tr>
                     </tbody>
@@ -311,4 +329,5 @@
         </footer>
     </main>
 </body>
+
 </html>

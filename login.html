@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,14 +8,15 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Stylesheet -->
     <link rel="stylesheet" href="Styles/styles-login.css">
-    <script src="Scripts/supabase-config.js" defer></script>
-    <script src="Scripts/login-auth-ui.js" defer></script>
+    <script type="module" src="Scripts/login-auth.js" defer></script>
 </head>
+
 <body>
     <!-- Floating background blur orbs for glassmorphism -->
     <div class="bg-blob bg-blob-1"></div>
@@ -39,15 +41,8 @@
                         <label for="username">Username or Email</label>
                         <div class="input-wrapper">
                             <i data-lucide="user" class="input-icon"></i>
-                            <input 
-                                type="text" 
-                                id="username" 
-                                name="username" 
-                                class="form-control" 
-                                placeholder="e.g. ritchie.bading.plpasig.edu.ph" 
-                                autocomplete="username"
-                                required
-                            >
+                            <input type="text" id="username" name="username" class="form-control"
+                                placeholder="e.g. ritchie.bading.plpasig.edu.ph" autocomplete="username" required>
                         </div>
                     </div>
 
@@ -55,16 +50,10 @@
                         <label for="password">Password</label>
                         <div class="input-wrapper">
                             <i data-lucide="lock" class="input-icon"></i>
-                            <input 
-                                type="password" 
-                                id="password" 
-                                name="password" 
-                                class="form-control" 
-                                placeholder="••••••••" 
-                                autocomplete="current-password"
-                                required
-                            >
-                            <button type="button" class="toggle-password" data-target="password" aria-label="Toggle password visibility">
+                            <input type="password" id="password" name="password" class="form-control"
+                                placeholder="••••••••" autocomplete="current-password" required>
+                            <button type="button" class="toggle-password" data-target="password"
+                                aria-label="Toggle password visibility">
                                 <i data-lucide="eye" class="eye-icon"></i>
                             </button>
                         </div>
@@ -85,7 +74,7 @@
                 </form>
 
                 <footer class="card-footer">
-                    Don't have an account? 
+                    Don't have an account?
                     <button type="button" class="flip-btn" id="goToRegister">Sign Up</button>
                 </footer>
             </section>
@@ -96,84 +85,58 @@
                     <h2>Create Account</h2>
                     <p>Join CO-EQROOM to reserve & manage assets</p>
                 </div>
-             
+
                 <form id="registerForm" action="/register" method="post" novalidate>
                     <div class="form-group">
                         <label for="full-name">Full Name</label>
                         <div class="input-wrapper">
                             <i data-lucide="user-check" class="input-icon"></i>
-                            <input 
-                                type="text" 
-                                id="full-name" 
-                                name="fullName" 
-                                class="form-control" 
-                                placeholder="e.g. Ritchie Bading" 
-                                autocomplete="name"
-                                required
-                            >
+                            <input type="text" id="full-name" name="fullName" class="form-control"
+                                placeholder="e.g. Ritchie Bading" autocomplete="name" required>
                         </div>
-                    <div class="form-group">
-                        <label for="new-username">Username or Email</label>
-                        <div class="input-wrapper">
-                            <i data-lucide="user" class="input-icon"></i>
-                            <input 
-                                type="text" 
-                                id="new-username" 
-                                name="username" 
-                                class="form-control" 
-                                placeholder="Choose a username or email" 
-                                autocomplete="username"
-                                required
-                            >
+                        <div class="form-group">
+                            <label for="new-username">Username or Email</label>
+                            <div class="input-wrapper">
+                                <i data-lucide="user" class="input-icon"></i>
+                                <input type="text" id="new-username" name="username" class="form-control"
+                                    placeholder="Choose a username or email" autocomplete="username" required>
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="form-group">
-                        <label for="new-password">Password</label>
-                        <div class="input-wrapper">
-                            <i data-lucide="lock" class="input-icon"></i>
-                            <input 
-                                type="password" 
-                                id="new-password" 
-                                name="password" 
-                                class="form-control" 
-                                placeholder="At least 8 characters" 
-                                autocomplete="new-password"
-                                required
-                            >
-                            <button type="button" class="toggle-password" data-target="new-password" aria-label="Toggle password visibility">
-                                <i data-lucide="eye" class="eye-icon"></i>
-                            </button>
+                        <div class="form-group">
+                            <label for="new-password">Password</label>
+                            <div class="input-wrapper">
+                                <i data-lucide="lock" class="input-icon"></i>
+                                <input type="password" id="new-password" name="password" class="form-control"
+                                    placeholder="At least 8 characters" autocomplete="new-password" required>
+                                <button type="button" class="toggle-password" data-target="new-password"
+                                    aria-label="Toggle password visibility">
+                                    <i data-lucide="eye" class="eye-icon"></i>
+                                </button>
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="form-group">
-                        <label for="confirm-password">Confirm Password</label>
-                        <div class="input-wrapper">
-                            <i data-lucide="shield-check" class="input-icon"></i>
-                            <input 
-                                type="password" 
-                                id="confirm-password" 
-                                name="confirmPassword" 
-                                class="form-control" 
-                                placeholder="Repeat password" 
-                                autocomplete="new-password"
-                                required
-                            >
-                            <button type="button" class="toggle-password" data-target="confirm-password" aria-label="Toggle password visibility">
-                                <i data-lucide="eye" class="eye-icon"></i>
-                            </button>
+                        <div class="form-group">
+                            <label for="confirm-password">Confirm Password</label>
+                            <div class="input-wrapper">
+                                <i data-lucide="shield-check" class="input-icon"></i>
+                                <input type="password" id="confirm-password" name="confirmPassword" class="form-control"
+                                    placeholder="Repeat password" autocomplete="new-password" required>
+                                <button type="button" class="toggle-password" data-target="confirm-password"
+                                    aria-label="Toggle password visibility">
+                                    <i data-lucide="eye" class="eye-icon"></i>
+                                </button>
+                            </div>
                         </div>
-                    </div>
 
-                    <button type="submit" class="btn-primary" id="registerSubmitBtn">
-                        <span>Create Account</span>
-                        <i data-lucide="user-plus" style="width: 18px; height: 18px;"></i>
-                    </button>
+                        <button type="submit" class="btn-primary" id="registerSubmitBtn">
+                            <span>Create Account</span>
+                            <i data-lucide="user-plus" style="width: 18px; height: 18px;"></i>
+                        </button>
                 </form>
 
                 <footer class="card-footer">
-                    Already have an account? 
+                    Already have an account?
                     <button type="button" class="flip-btn" id="goToLogin">Sign In</button>
                 </footer>
             </section>
@@ -183,4 +146,5 @@
     <!-- UI & Animation Logic -->
     <script src="Scripts/animations.js"></script>
 </body>
+
 </html>

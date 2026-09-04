@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,12 +8,18 @@
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="Styles/styles-web.css">
     <script src="Scripts/animations.js" defer></script>
+    <script type="module">
+        import { requireAuth } from './Scripts/auth-guard.js';
+        requireAuth();
+    </script>
 </head>
+
 <body>
     <!-- Decorative background glass orbs -->
     <div class="bg-blob bg-blob-1"></div>
@@ -28,7 +35,8 @@
                 <h1>CO-EQROOM</h1>
                 <p>IoT-Based Equipment Room<br>Management System</p>
             </div>
-            <button class="btn-sidebar-collapse" id="sidebarCollapseBtn" aria-label="Toggle sidebar width" title="Minimize Sidebar">
+            <button class="btn-sidebar-collapse" id="sidebarCollapseBtn" aria-label="Toggle sidebar width"
+                title="Minimize Sidebar">
                 <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i>
             </button>
         </div>
@@ -107,7 +115,8 @@
                         <i data-lucide="user" style="color: #6B7280; width: 18px; height: 18px;"></i>
                     </div>
                     <span style="font-weight: 700; font-size: 0.88rem;">Admin</span>
-                    <i data-lucide="chevron-down" style="width: 14px; height: 14px; color: var(--color-text-muted);"></i>
+                    <i data-lucide="chevron-down"
+                        style="width: 14px; height: 14px; color: var(--color-text-muted);"></i>
                 </div>
             </div>
         </header>
@@ -254,16 +263,17 @@
                 <div class="chart-container">
                     <!-- Vector Donut Chart -->
                     <svg viewBox="0 0 42 42" class="donut-chart-svg">
-                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#f3f4f6" stroke-width="6.5"></circle>
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#f3f4f6" stroke-width="6.5">
+                        </circle>
                         <!-- Available (Green ~69.5%) -->
-                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--color-success)" stroke-width="6.5"
-                            stroke-dasharray="69.5 30.5" stroke-dashoffset="0"></circle>
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--color-success)"
+                            stroke-width="6.5" stroke-dasharray="69.5 30.5" stroke-dashoffset="0"></circle>
                         <!-- Borrowed (Orange ~21.1%) -->
-                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--color-primary)" stroke-width="6.5"
-                            stroke-dasharray="21.1 78.9" stroke-dashoffset="-69.5"></circle>
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--color-primary)"
+                            stroke-width="6.5" stroke-dasharray="21.1 78.9" stroke-dashoffset="-69.5"></circle>
                         <!-- Maintenance (Red ~9.4%) -->
-                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--color-danger)" stroke-width="6.5"
-                            stroke-dasharray="9.4 90.6" stroke-dashoffset="-90.6"></circle>
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--color-danger)"
+                            stroke-width="6.5" stroke-dasharray="9.4 90.6" stroke-dashoffset="-90.6"></circle>
                     </svg>
 
                     <div class="donut-legend">
@@ -384,7 +394,8 @@
                     </div>
 
                     <div style="margin-top: 10px;">
-                        <a href="#system-details" class="btn-unlock-outline" style="text-decoration: none; width: 100%;">
+                        <a href="#system-details" class="btn-unlock-outline"
+                            style="text-decoration: none; width: 100%;">
                             <i data-lucide="info" style="width: 16px; height: 16px;"></i>
                             <span>View System Details</span>
                         </a>
@@ -399,4 +410,5 @@
         </footer>
     </main>
 </body>
+
 </html>

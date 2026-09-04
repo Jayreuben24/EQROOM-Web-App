@@ -1,32 +1,61 @@
-import { supabase } from './supabase-config.js'
+import { supabase } from './supabase-config.js';
 
-const loginForm = document.getElementById('login-form')
+const loginForm = document.getElementById('loginForm');
+const registerForm = document.getElementById('registerForm');
 
-loginForm.addEventListener('submit', async (e) => {
-  e.preventDefault()
+if (loginForm) {
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
 
-  const email = document.getElementById('email').value
-  const password = document.getElementById('password').value
-  const errorMsg = document.getElementById('error-message')
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) {
+      alert(error.message);
+      return;
+    }
 
-  if (error) {
-    errorMsg.textContent = error.message
-    errorMsg.style.display = 'block'
-    return
-  }
+    // Redirect to dashboard on successful login
+    window.location.href = 'dashboard.html';
+  });
+}
 
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', data.user.id)
-    .single()
+if (registerForm) {
+  registerForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fullName = document.getElementById('full-name').value;
+    const email = document.getElementById('new-username').value;
+    const password = document.getElementById('new-password').value;
+    const confirmPassword = document.getElementById('confirm-password').value;
 
-  if (profileError) {
-    errorMsg.textContent = 'Could not load user profile.'
-    return
-  }
+    if (password !== confirmPassword) {
+      alert('Passwords do not match');
+      return;
+    }
 
-  window.location.href = profile.role === 'admin' ? 'admin-dashboard.html' : 'student-dashboard.html'
-})
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName
+        }
+      }
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    alert('Registration successful! You can now log in.');
+    // Trigger click on 'Sign In' button to flip back to login card
+    const goToLoginBtn = document.getElementById('goToLogin');
+    if (goToLoginBtn) {
+      goToLoginBtn.click();
+    } else {
+      window.location.href = 'login.html';
+    }
+  });
+}
