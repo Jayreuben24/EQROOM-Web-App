@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CO-EQROOM - Activity Logs</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="Styles/styles-web.css">
+    <script src="Scripts/animations.js" defer></script> 
+</head>
+<body>
+    <!-- Decorative background glass orbs -->
+    <div class="bg-blob bg-blob-1"></div>
+    <div class="bg-blob bg-blob-2"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="brand-banner">
+            <div class="brand-icon-shield">
+                <i data-lucide="shield" style="width: 26px; height: 26px;"></i>
+            </div>
+            <div class="brand-text">
+                <h1>CO-EQROOM</h1>
+                <p>IoT-Based Equipment Room<br>Management System</p>
+            </div>
+            <button class="btn-sidebar-collapse" id="sidebarCollapseBtn" aria-label="Toggle sidebar width" title="Minimize Sidebar">
+                <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i>
+            </button>
+        </div>
+
+        <nav class="dashboard-nav">
+            <a href="dashboard.html" class="nav-link" data-tooltip="Home Dashboard">
+                <i data-lucide="home"></i>
+                <span>Home Dashboard</span>
+            </a>
+            <a href="user-directory.html" class="nav-link" data-tooltip="Users and Directory">
+                <i data-lucide="users"></i>
+                <span>Users and Directory</span>
+            </a>
+            <a href="inventory.html" class="nav-link" data-tooltip="Inventory">
+                <i data-lucide="package"></i>
+                <span>Inventory</span>
+            </a>
+            <a href="activity-logs.html" class="nav-link active" data-tooltip="Activity Logs">
+                <i data-lucide="clipboard-list"></i>
+                <span>Activity Logs</span>
+            </a>
+            <a href="#settings" class="nav-link" data-tooltip="Settings">
+                <i data-lucide="settings"></i>
+                <span>Settings</span>
+            </a>
+            <a href="login.html" class="nav-link" style="margin-top: auto;" data-tooltip="Logout">
+                <i data-lucide="log-out"></i>
+                <span>Logout</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-profile-chip">
+                <div class="user-profile-info">
+                    <div class="avatar">
+                        <i data-lucide="user" style="color: #6B7280; width: 22px; height: 22px;"></i>
+                    </div>
+                    <div class="profile-meta">
+                        <h4>Admin</h4>
+                        <p>System Administrator</p>
+                    </div>
+                </div>
+                <i data-lucide="chevron-down" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Top Header Bar -->
+        <header class="top-header">
+            <div class="header-left">
+                <button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation">
+                    <i data-lucide="menu"></i>
+                </button>
+                <h2 class="page-title">System Activity Logs</h2>
+            </div>
+            <div class="header-right">
+                <button class="notification-btn" aria-label="Notifications">
+                    <i data-lucide="bell" style="width: 20px; height: 20px; color: var(--color-text-secondary);"></i>
+                    <span class="notif-badge">3</span>
+                </button>
+                <div class="live-datetime">
+                    <div class="datetime-item">
+                        <i data-lucide="calendar"></i>
+                        <span id="liveDate">May 25, 2026</span>
+                    </div>
+                    <span class="datetime-separator">|</span>
+                    <div class="datetime-item">
+                        <i data-lucide="clock"></i>
+                        <span id="liveTime">10:30 AM</span>
+                    </div>
+                </div>
+                <div class="header-user">
+                    <div class="avatar" style="width: 34px; height: 34px;">
+                        <i data-lucide="user" style="color: #6B7280; width: 18px; height: 18px;"></i>
+                    </div>
+                    <span style="font-weight: 700; font-size: 0.88rem;">Admin</span>
+                    <i data-lucide="chevron-down" style="width: 14px; height: 14px; color: var(--color-text-muted);"></i>
+                </div>
+            </div>
+        </header>
+
+        <!-- Activity Overview Metric Cards -->
+        <section style="display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;">
+            <div class="metrics-grid" style="flex: 1;">
+                <div class="metric-card">
+                    <div class="metric-icon-box metric-icon-orange">
+                        <i data-lucide="activity" style="width: 24px; height: 24px;"></i>
+                    </div>
+                    <div class="metric-data">
+                        <div class="metric-label">Today's Logs</div>
+                        <div class="metric-value">48</div>
+                        <span style="font-size: 0.78rem; color: var(--color-success); font-weight: 600;">&uarr; Normal Activity</span>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-icon-box metric-icon-green">
+                        <i data-lucide="lock-keyhole-open" style="width: 24px; height: 24px;"></i>
+                    </div>
+                    <div class="metric-data">
+                        <div class="metric-label">Door Accesses</div>
+                        <div class="metric-value">19</div>
+                        <span style="font-size: 0.78rem; color: var(--color-text-secondary);">Biometric entries</span>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-icon-box metric-icon-blue">
+                        <i data-lucide="arrow-left-right" style="width: 24px; height: 24px;"></i>
+                    </div>
+                    <div class="metric-data">
+                        <div class="metric-label">Transactions</div>
+                        <div class="metric-value">22</div>
+                        <span style="font-size: 0.78rem; color: var(--color-text-secondary);">Check-in & out</span>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-icon-box metric-icon-gray">
+                        <i data-lucide="database" style="width: 24px; height: 24px;"></i>
+                    </div>
+                    <div class="metric-data">
+                        <div class="metric-label">Cloud Backups</div>
+                        <div class="metric-value">7</div>
+                        <span style="font-size: 0.78rem; color: var(--color-success); font-weight: 600;">100% Synced</span>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn-primary-action" id="btnExportLogs">
+                <i data-lucide="download" style="width: 18px; height: 18px;"></i>
+                <span>Export CSV</span>
+            </button>
+        </section>
+
+        <!-- Activity Logs Master Table Panel -->
+        <section class="glass-panel">
+            <div class="table-header-bar">
+                <h3 style="font-size: 1rem; font-weight: 800; text-transform: uppercase;">Audit Trail & Event Records</h3>
+                <div class="search-filter-wrapper">
+                    <div class="search-box">
+                        <i data-lucide="search"></i>
+                        <input type="text" class="table-search-input" placeholder="Search event, user, equipment...">
+                    </div>
+                    <select class="filter-select" aria-label="Filter events">
+                        <option value="all">All Events</option>
+                        <option value="door">Door Access</option>
+                        <option value="checkout">Check-out</option>
+                        <option value="return">Return</option>
+                        <option value="system">System & Cloud</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="custom-table">
+                    <thead>
+                        <tr>
+                            <th>Log ID</th>
+                            <th>Event Type</th>
+                            <th>User / Initiator</th>
+                            <th>Details & Context</th>
+                            <th>Status / Result</th>
+                            <th>Timestamp</th>
+                            <th style="text-align: center;">Audit</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>#LOG-8941</td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span class="activity-badge access" style="width: 28px; height: 28px;">
+                                        <i data-lucide="lock-keyhole-open" style="width: 15px; height: 15px;"></i>
+                                    </span>
+                                    <span>Door Access</span>
+                                </div>
+                            </td>
+                            <td><strong>Juan Dela Cruz</strong></td>
+                            <td>Biometric Fingerprint Verified (Door 1)</td>
+                            <td><span class="status-tag active">Granted</span></td>
+                            <td style="color: var(--color-text-secondary);">May 25, 2026 10:29 AM</td>
+                            <td style="text-align: center;">
+                                <button class="btn-icon-action edit" title="View snapshot" aria-label="View Snapshot"><i data-lucide="eye" style="width: 15px; height: 15px;"></i></button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>#LOG-8940</td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span class="activity-badge checkout" style="width: 28px; height: 28px;">
+                                        <i data-lucide="arrow-right" style="width: 15px; height: 15px;"></i>
+                                    </span>
+                                    <span>Equipment Checkout</span>
+                                </div>
+                            </td>
+                            <td><strong>Miguel Santos</strong></td>
+                            <td>Borrowed: Electric Hammer Drill (EQ-2041)</td>
+                            <td><span class="status-tag borrowed">Borrowed</span></td>
+                            <td style="color: var(--color-text-secondary);">May 25, 2026 10:20 AM</td>
+                            <td style="text-align: center;">
+                                <button class="btn-icon-action edit" title="View details" aria-label="View Details"><i data-lucide="file-text" style="width: 15px; height: 15px;"></i></button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>#LOG-8939</td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span class="activity-badge returned" style="width: 28px; height: 28px;">
+                                        <i data-lucide="corner-down-left" style="width: 15px; height: 15px;"></i>
+                                    </span>
+                                    <span>Equipment Return</span>
+                                </div>
+                            </td>
+                            <td><strong>Ana Reyes</strong></td>
+                            <td>Returned: Screwdriver Set (EQ-1882)</td>
+                            <td><span class="status-tag returned">Returned</span></td>
+                            <td style="color: var(--color-text-secondary);">May 25, 2026 09:45 AM</td>
+                            <td style="text-align: center;">
+                                <button class="btn-icon-action edit" title="View details" aria-label="View Details"><i data-lucide="file-text" style="width: 15px; height: 15px;"></i></button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>#LOG-8938</td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span class="activity-badge access" style="width: 28px; height: 28px;">
+                                        <i data-lucide="lock-keyhole-open" style="width: 15px; height: 15px;"></i>
+                                    </span>
+                                    <span>Door Access</span>
+                                </div>
+                            </td>
+                            <td><strong>Pedro Garcia</strong></td>
+                            <td>Biometric Fingerprint Verified (Door 1)</td>
+                            <td><span class="status-tag active">Granted</span></td>
+                            <td style="color: var(--color-text-secondary);">May 25, 2026 09:30 AM</td>
+                            <td style="text-align: center;">
+                                <button class="btn-icon-action edit" title="View snapshot" aria-label="View Snapshot"><i data-lucide="eye" style="width: 15px; height: 15px;"></i></button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>#LOG-8937</td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span class="activity-badge backup" style="width: 28px; height: 28px;">
+                                        <i data-lucide="database" style="width: 15px; height: 15px;"></i>
+                                    </span>
+                                    <span>Cloud Backup</span>
+                                </div>
+                            </td>
+                            <td><strong>System Automated</strong></td>
+                            <td>Backup database to Google Sheets / Cloud DB</td>
+                            <td><span class="status-tag active">Success</span></td>
+                            <td style="color: var(--color-text-secondary);">May 25, 2026 08:00 AM</td>
+                            <td style="text-align: center;">
+                                <button class="btn-icon-action edit" title="View log" aria-label="View Log"><i data-lucide="file-text" style="width: 15px; height: 15px;"></i></button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-footer-bar">
+                <span>Showing 1 to 5 of 48 entries</span>
+                <div class="pagination-controls">
+                    <button class="page-btn" aria-label="Previous">&lt;</button>
+                    <button class="page-btn active">1</button>
+                    <button class="page-btn">2</button>
+                    <button class="page-btn">3</button>
+                    <button class="page-btn" aria-label="Next">&gt;</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer Copyright -->
+        <footer class="app-footer">
+            &copy; 2026 EquipRoom. All rights reserved.
+        </footer>
+    </main>
+</body>
+</html>

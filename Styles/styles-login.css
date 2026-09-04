@@ -1,0 +1,375 @@
+:root {
+  /* Brand Colors */
+  --color-primary: #FF6813;
+  --color-primary-hover: #e5560a;
+  --color-primary-light: #FFF0E5;
+  --color-primary-glow: rgba(255, 104, 19, 0.35);
+
+  /* Backgrounds */
+  --color-bg-base: #0f172a;
+  --color-bg-surface: #FFFFFF;
+
+  /* Glassmorphism Variables */
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.65);
+  --glass-shadow: 0 20px 50px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(255, 255, 255, 0.4);
+  --glass-blur: 16px;
+
+  /* Text */
+  --color-text-primary: #1F2937;
+  --color-text-secondary: #6B7280;
+  --color-text-muted: #9CA3AF;
+
+  /* Semantic / Status Colors */
+  --color-success: #22C55E;
+  --color-danger: #EF4444;
+  --color-info: #3B82F6;
+  --color-warning: #F59E0B;
+
+  /* Borders & Inputs */
+  --color-border: #E5E7EB;
+  --input-bg: rgba(255, 255, 255, 0.85);
+  --input-border: rgba(229, 231, 235, 0.85);
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 24px;
+  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: #f8f9fa;
+  background-image: 
+    radial-gradient(at 10% 20%, rgba(255, 104, 19, 0.18) 0px, transparent 50%),
+    radial-gradient(at 90% 10%, rgba(59, 130, 246, 0.12) 0px, transparent 50%),
+    radial-gradient(at 80% 85%, rgba(255, 104, 19, 0.16) 0px, transparent 50%),
+    radial-gradient(at 20% 80%, rgba(245, 158, 11, 0.14) 0px, transparent 50%);
+  background-attachment: fixed;
+  padding: 24px 16px;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Background floating decorative glass orbs */
+.bg-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.65;
+  animation: float 10s ease-in-out infinite alternate;
+}
+
+.bg-blob-1 {
+  width: 320px;
+  height: 320px;
+  background: linear-gradient(135deg, #FF6813, #f97316);
+  top: 10%;
+  left: 12%;
+}
+
+.bg-blob-2 {
+  width: 360px;
+  height: 360px;
+  background: linear-gradient(135deg, #fb923c, #fdba74);
+  bottom: 8%;
+  right: 12%;
+  animation-delay: -5s;
+}
+
+@keyframes float {
+  0% {
+    transform: translateY(0px) scale(1);
+  }
+  100% {
+    transform: translateY(-28px) scale(1.04);
+  }
+}
+
+/* App Header & Brand */
+.brand-header {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.brand-header h1 {
+  font-size: 2.2rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.brand-header h1 span {
+  color: var(--color-primary);
+}
+
+.brand-header p {
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+/* 3D Flip Scene & Container */
+.scene {
+  width: 100%;
+  max-width: 440px;
+  perspective: 1200px;
+  position: relative;
+  z-index: 1;
+}
+
+.auth-card {
+  width: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.75s cubic-bezier(0.4, 0.2, 0.2, 1);
+}
+
+.auth-card.flipped {
+  transform: rotateY(180deg);
+}
+
+/* Glassmorphism Cards (Front & Back) */
+.login-card,
+.register-card {
+  width: 100%;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: var(--radius-lg);
+  padding: 36px 32px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.register-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: rotateY(180deg);
+}
+
+/* Card Headers */
+.card-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.card-header h2 {
+  font-size: 1.65rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.card-header p {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  margin-top: 6px;
+}
+
+/* Form Groups & Inputs */
+.form-group {
+  margin-bottom: 18px;
+  position: relative;
+  text-align: left;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icon {
+  position: absolute;
+  left: 14px;
+  color: var(--color-text-muted);
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+  transition: var(--transition-smooth);
+}
+
+.form-control {
+  width: 100%;
+  padding: 12px 14px 12px 42px;
+  font-size: 0.95rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--color-text-primary);
+  outline: none;
+  transition: var(--transition-smooth);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.form-control::placeholder {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.form-control:focus {
+  border-color: var(--color-primary);
+  background: #ffffff;
+  box-shadow: 0 0 0 3px var(--color-primary-glow);
+}
+
+.form-control:focus + .input-icon,
+.input-wrapper:focus-within .input-icon {
+  color: var(--color-primary);
+}
+
+/* Password Toggle Icon */
+.toggle-password {
+  position: absolute;
+  right: 14px;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  transition: var(--transition-smooth);
+}
+
+.toggle-password:hover {
+  color: var(--color-text-primary);
+}
+
+/* Helper options (Remember me, Forgot password) */
+.form-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+  font-size: 0.84rem;
+}
+
+.remember-me {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.remember-me input[type="checkbox"] {
+  accent-color: var(--color-primary);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.forgot-link {
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: 600;
+  transition: var(--transition-smooth);
+}
+
+.forgot-link:hover {
+  text-decoration: underline;
+  color: var(--color-primary-hover);
+}
+
+/* Buttons */
+.btn-primary {
+  width: 100%;
+  padding: 13px 20px;
+  background: var(--color-primary);
+  color: #FFFFFF;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.98rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 20px var(--color-primary-glow);
+  transition: var(--transition-smooth);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-primary:hover {
+  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px var(--color-primary-glow);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* Card Footer / Switchers */
+.card-footer {
+  text-align: center;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(229, 231, 235, 0.6);
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.flip-btn {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: inherit;
+  transition: var(--transition-smooth);
+}
+
+.flip-btn:hover {
+  text-decoration: underline;
+  color: var(--color-primary-hover);
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .login-card,
+  .register-card {
+    padding: 28px 20px;
+    border-radius: var(--radius-md);
+  }
+
+  .brand-header h1 {
+    font-size: 1.8rem;
+  }
+}
+
