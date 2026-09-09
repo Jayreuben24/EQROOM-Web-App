@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CO-EQROOM - Home Dashboard</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="Styles/styles-web.css">
+    <script src="Scripts/animations.js" defer></script>
+    <script type="module">
+        import { requireAuth } from './Scripts/auth-guard.js';
+        requireAuth();
+    </script>
+</head>
+
+<body>
+    <!-- Decorative background glass orbs -->
+    <div class="bg-blob bg-blob-1"></div>
+    <div class="bg-blob bg-blob-2"></div>
+
+    <!-- Sidebar (Matches sample design) -->
+    <aside class="sidebar">
+        <div class="brand-banner">
+            <div class="brand-icon-shield">
+                <i data-lucide="shield" style="width: 26px; height: 26px;"></i>
+            </div>
+            <div class="brand-text">
+                <h1>CO-EQROOM</h1>
+                <p>IoT-Based Equipment Room<br>Management System</p>
+            </div>
+            <button class="btn-sidebar-collapse" id="sidebarCollapseBtn" aria-label="Toggle sidebar width"
+                title="Minimize Sidebar">
+                <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i>
+            </button>
+        </div>
+
+        <nav class="dashboard-nav">
+            <a href="dashboard.html"  data-tooltip="Home Dashboard">
+                <i data-lucide="home"></i>
+                <span>Home Dashboard</span>
+            </a>
+            <a href="user-directory.html" class="nav-link" data-tooltip="Users and Directory">
+                <i data-lucide="users"></i>
+                <span>Users and Directory</span>
+            </a>
+            <a href="inventory.html" class="nav-link" data-tooltip="Inventory">
+                <i data-lucide="package"></i>
+                <span>Inventory</span>
+            </a>
+            <a href="activity-logs.html" class="nav-link" data-tooltip="Activity Logs">
+                <i data-lucide="clipboard-list"></i>
+                <span>Activity Logs</span>
+            </a>
+            <a href="settings.html" class="nav-link active" class="nav-link" data-tooltip="Settings">
+                <i data-lucide="settings"></i>
+                <span>Settings</span>
+            </a>
+            <a href="login.html" class="nav-link" style="margin-top: auto;" data-tooltip="Logout">
+                <i data-lucide="log-out"></i>
+                <span>Logout</span>
+            </a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="user-profile-chip">
+                <div class="user-profile-info">
+                    <div class="avatar">
+                        <i data-lucide="user" style="color: #6B7280; width: 22px; height: 22px;"></i>
+                    </div>
+                    <div class="profile-meta">
+                        <h4>Admin</h4>
+                        <p>System Administrator</p>
+                    </div>
+                </div>
+                <i data-lucide="chevron-down" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+            </div>
+        </div>
+    </aside>
