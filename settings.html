@@ -3,6 +3,9 @@
 
 <head>
     <meta charset="UTF-8">
+    <!-- Applies the saved dark/light choice before first paint, so the page
+         never flashes light-mode then flips to dark. -->
+    <script>(function(){try{var t=localStorage.getItem('coeqroom-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CO-EQROOM - Settings</title>
     <!-- Fonts -->
@@ -14,64 +17,153 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="Styles/styles-web.css">
     <script src="Scripts/animations.js" defer></script>
+    <script src="Scripts/theme.js" defer></script>
     <script type="module">
-        import { requireAuth, logout } from './Scripts/auth-guard.js';
+        import { requireAdmin, logout } from './Scripts/auth-guard.js';
         import { supabase } from './Scripts/supabase-config.js';
 
-        const session = await requireAuth();
+        const session = await requireAdmin();
 
         document.getElementById('logoutNavLink')?.addEventListener('click', (e) => {
             e.preventDefault();
             logout();
         });
 
-        // Populate the account email from the active Supabase session
-        const accountEmail = document.getElementById('accountEmail');
-        if (accountEmail && session) {
-            accountEmail.value = session.user.email ?? '';
-        }
+        // ============================================================
+        // SETTINGS -- four tabs, each backed by whatever is actually real
+        // today:
+        //   Account & Security -- real (Supabase Auth password update)
+        //   Appearance         -- real (dark mode + sidebar preference,
+        //                         both already backed by localStorage)
+        //   Notifications      -- UI-only for now; clearly labeled as such
+        //                         since there's no email/push service wired
+        //                         up yet, same honesty policy as the rest
+        //                         of the app (see Biometric Registered in
+        //                         Users & Directory)
+        //   Hardware & Data    -- Recalibrate/Restart are simulated (no
+        //                         command channel to the ESP32 exists yet);
+        //                         Export CSV is real, reading straight from
+        //                         Supabase.
+        // ============================================================
 
-        // Change Password
-        const changePasswordForm = document.getElementById('changePasswordForm');
-        if (changePasswordForm) {
-            changePasswordForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const newPassword = document.getElementById('newPassword').value;
-                const confirmNewPassword = document.getElementById('confirmNewPassword').value;
+        // ---- Account & Security ----
+        const nameEl = document.getElementById('settingsProfileName');
+        const emailEl = document.getElementById('settingsProfileEmail');
+        if (nameEl) nameEl.textContent = session.user.user_metadata?.full_name?.trim() || session.user.email || 'Admin';
+        if (emailEl) emailEl.textContent = session.user.email || '';
 
-                if (newPassword.length < 8) {
-                    alert('New password must be at least 8 characters.');
-                    return;
-                }
-                if (newPassword !== confirmNewPassword) {
-                    alert('Passwords do not match.');
-                    return;
-                }
+        document.getElementById('passwordForm')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmNewPassword').value;
 
-                const submitBtn = document.getElementById('changePasswordSubmitBtn');
-                submitBtn.disabled = true;
-                submitBtn.querySelector('span').textContent = 'Updating...';
+            if (newPassword.length < 6) {
+                alert('Password must be at least 6 characters.');
+                return;
+            }
+            if (newPassword !== confirmPassword) {
+                alert('Passwords do not match.');
+                return;
+            }
 
-                const { error } = await supabase.auth.updateUser({ password: newPassword });
+            const btn = document.getElementById('passwordSubmitBtn');
+            btn.disabled = true;
+            const original = btn.innerHTML;
+            btn.innerHTML = '<i data-lucide="loader-circle" class="spin" style="width: 16px; height: 16px;"></i><span>Updating...</span>';
+            if (window.lucide) window.lucide.createIcons();
 
-                submitBtn.disabled = false;
-                submitBtn.querySelector('span').textContent = 'Update Password';
+            const { error } = await supabase.auth.updateUser({ password: newPassword });
 
-                if (error) {
-                    alert(error.message);
-                    return;
-                }
+            btn.disabled = false;
+            btn.innerHTML = original;
+            if (window.lucide) window.lucide.createIcons();
 
-                alert('Password updated successfully.');
-                changePasswordForm.reset();
+            if (error) {
+                alert('Could not update password: ' + error.message);
+                return;
+            }
+
+            document.getElementById('passwordForm').reset();
+            alert('Password updated successfully.');
+        });
+
+        document.getElementById('btnSignOut')?.addEventListener('click', () => {
+            if (confirm('Sign out of CO-EQROOM?')) logout();
+        });
+
+        // ---- Appearance ----
+        // Dark mode itself is wired generically in Scripts/theme.js (any
+        // .theme-toggle-checkbox syncs with the sidebar toggle). This just
+        // handles the sidebar-minimize preference, reusing the exact
+        // localStorage key + classes animations.js already uses for the
+        // collapse button, so this checkbox and that button always agree.
+        const sidebarPrefInput = document.getElementById('prefMinimizeSidebar');
+        if (sidebarPrefInput) {
+            sidebarPrefInput.checked = localStorage.getItem('sidebar-minimized') === 'true';
+            sidebarPrefInput.addEventListener('change', () => {
+                const minimized = sidebarPrefInput.checked;
+                localStorage.setItem('sidebar-minimized', minimized);
+                document.querySelector('.sidebar')?.classList.toggle('minimized', minimized);
+                document.body.classList.toggle('sidebar-is-minimized', minimized);
+                if (window.lucide) window.lucide.createIcons();
             });
         }
 
-        // Sign out of all other devices/sessions
-        document.getElementById('btnSignOutOthers')?.addEventListener('click', async () => {
-            if (!confirm('Sign out of all other active sessions on this account?')) return;
-            const { error } = await supabase.auth.signOut({ scope: 'others' });
-            alert(error ? error.message : 'Signed out of all other sessions.');
+        // ---- Hardware & Data: real CSV export straight from Supabase ----
+        function toCsvValue(v) {
+            if (v === null || v === undefined) return '';
+            const s = String(v);
+            return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        }
+
+        function rowsToCsv(rows) {
+            if (!rows.length) return '';
+            const headers = Object.keys(rows[0]);
+            const lines = [headers.join(',')];
+            for (const row of rows) {
+                lines.push(headers.map((h) => toCsvValue(row[h])).join(','));
+            }
+            return lines.join('\n');
+        }
+
+        document.getElementById('btnExportData')?.addEventListener('click', async () => {
+            const select = document.getElementById('exportTableSelect');
+            const statusEl = document.getElementById('exportStatusText');
+            const table = select?.value || 'items';
+            const btn = document.getElementById('btnExportData');
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i data-lucide="loader-circle" class="spin" style="width: 16px; height: 16px;"></i><span>Exporting...</span>';
+            if (window.lucide) window.lucide.createIcons();
+            if (statusEl) statusEl.textContent = '';
+
+            const { data, error } = await supabase.from(table).select('*');
+
+            btn.disabled = false;
+            btn.innerHTML = original;
+            if (window.lucide) window.lucide.createIcons();
+
+            if (error) {
+                if (statusEl) statusEl.textContent = 'Export failed: ' + error.message;
+                return;
+            }
+            if (!data || data.length === 0) {
+                if (statusEl) statusEl.textContent = 'Nothing to export -- that table is empty.';
+                return;
+            }
+
+            const csv = rowsToCsv(data);
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `co-eqroom-${table}-${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+
+            if (statusEl) statusEl.textContent = `Exported ${data.length} row(s) from "${table}".`;
         });
     </script>
 </head>
@@ -166,375 +258,205 @@
                         <span id="liveTime">10:30 AM</span>
                     </div>
                 </div>
-                <a href="profile.html" class="header-user" style="text-decoration: none; color: inherit;">
+                <div class="header-user">
                     <div class="avatar" style="width: 34px; height: 34px;">
                         <i data-lucide="user" style="color: #6B7280; width: 18px; height: 18px;"></i>
                     </div>
                     <span style="font-weight: 700; font-size: 0.88rem;">Admin</span>
                     <i data-lucide="chevron-down"
                         style="width: 14px; height: 14px; color: var(--color-text-muted);"></i>
-                </a>
+                </div>
             </div>
         </header>
 
-        <!-- Settings Layout: Side Tabs + Panels -->
-        <div class="settings-layout">
-            <!-- Side Tab Navigation -->
-            <aside class="settings-tabs glass-panel">
-                <button class="settings-tab-link active" data-tab="account">
-                    <i data-lucide="user-cog"></i>
-                    <span>Account &amp; Security</span>
-                </button>
-                <button class="settings-tab-link" data-tab="notifications">
-                    <i data-lucide="bell-ring"></i>
-                    <span>Notifications</span>
-                </button>
-                <button class="settings-tab-link" data-tab="access">
-                    <i data-lucide="door-open"></i>
-                    <span>Access Control</span>
-                </button>
-                <button class="settings-tab-link" data-tab="device">
-                    <i data-lucide="cpu"></i>
-                    <span>Device &amp; Hardware</span>
-                </button>
-                <button class="settings-tab-link" data-tab="backup">
-                    <i data-lucide="cloud-cog"></i>
-                    <span>Backup &amp; Data</span>
-                </button>
-            </aside>
+        <!-- Settings Panel -->
+        <section class="glass-panel">
+            <div class="settings-layout">
+                <nav class="settings-tabs">
+                    <button type="button" class="settings-tab-link active" data-tab="account">
+                        <i data-lucide="shield-check"></i>
+                        <span>Account &amp; Security</span>
+                    </button>
+                    <button type="button" class="settings-tab-link" data-tab="appearance">
+                        <i data-lucide="paintbrush"></i>
+                        <span>Appearance</span>
+                    </button>
+                    <button type="button" class="settings-tab-link" data-tab="notifications">
+                        <i data-lucide="bell"></i>
+                        <span>Notifications</span>
+                    </button>
+                    <button type="button" class="settings-tab-link" data-tab="hardware">
+                        <i data-lucide="cpu"></i>
+                        <span>Hardware &amp; Data</span>
+                    </button>
+                </nav>
 
-            <!-- Settings Content Panels -->
-            <section class="settings-content">
-
-                <!-- Panel: Account & Security -->
-                <div class="settings-panel glass-panel active" id="panel-account">
-                    <div class="card-title-bar">
-                        <h3>Account &amp; Security</h3>
-                    </div>
-
-                    <a href="profile.html" class="mini-profile-link">
-                        <div class="mini-profile-left">
-                            <div class="avatar" style="width: 42px; height: 42px;">
-                                <i data-lucide="user" style="color: #6B7280; width: 22px; height: 22px;"></i>
-                            </div>
-                            <div>
-                                <h5>Manage your full profile</h5>
-                                <p>Name, role, section &amp; account details</p>
-                            </div>
-                        </div>
-                        <i data-lucide="chevron-right" class="chevron"></i>
-                    </a>
-
-                    <div class="settings-subheading">Login Email</div>
-                    <div class="form-group">
-                        <label for="accountEmail">Email Address</label>
-                        <div class="input-wrapper">
-                            <i data-lucide="mail" class="input-icon"></i>
-                            <input type="email" id="accountEmail" class="form-control" disabled
-                                placeholder="Loading...">
-                        </div>
-                        <span class="form-hint">Contact an administrator to change the email tied to your
-                            account.</span>
-                    </div>
-
-                    <div class="settings-divider"></div>
-
-                    <div class="settings-subheading">Change Password</div>
-                    <form id="changePasswordForm" novalidate>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="newPassword">New Password</label>
-                                <div class="input-wrapper">
-                                    <i data-lucide="lock" class="input-icon"></i>
-                                    <input type="password" id="newPassword" class="form-control"
-                                        placeholder="At least 8 characters" autocomplete="new-password" required>
+                <div class="settings-content">
+                    <!-- Account & Security -->
+                    <div class="settings-panel active" id="panel-account">
+                        <div class="settings-subheading">Your Account</div>
+                        <a href="profile.html" class="mini-profile-link">
+                            <div class="mini-profile-left">
+                                <div class="avatar" style="width: 44px; height: 44px;">
+                                    <i data-lucide="user" style="color: #6B7280; width: 22px; height: 22px;"></i>
+                                </div>
+                                <div>
+                                    <h5 id="settingsProfileName">Loading...</h5>
+                                    <p id="settingsProfileEmail">&nbsp;</p>
                                 </div>
                             </div>
-                            <div class="form-group">
-                                <label for="confirmNewPassword">Confirm New Password</label>
-                                <div class="input-wrapper">
-                                    <i data-lucide="shield-check" class="input-icon"></i>
-                                    <input type="password" id="confirmNewPassword" class="form-control"
-                                        placeholder="Repeat new password" autocomplete="new-password" required>
+                            <i data-lucide="chevron-right" class="chevron"></i>
+                        </a>
+
+                        <div class="settings-divider"></div>
+
+                        <div class="settings-subheading">Change Password</div>
+                        <form id="passwordForm" novalidate>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="newPassword">New Password</label>
+                                    <div class="input-wrapper">
+                                        <i data-lucide="lock" class="input-icon"></i>
+                                        <input type="password" id="newPassword" class="form-control"
+                                            placeholder="At least 6 characters" autocomplete="new-password" required
+                                            minlength="6">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="confirmNewPassword">Confirm New Password</label>
+                                    <div class="input-wrapper">
+                                        <i data-lucide="shield-check" class="input-icon"></i>
+                                        <input type="password" id="confirmNewPassword" class="form-control"
+                                            placeholder="Repeat password" autocomplete="new-password" required
+                                            minlength="6">
+                                    </div>
                                 </div>
                             </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn-primary-action" id="passwordSubmitBtn">
+                                    <i data-lucide="save" style="width: 16px; height: 16px;"></i>
+                                    <span>Update Password</span>
+                                </button>
+                            </div>
+                        </form>
+
+                        <div class="settings-divider"></div>
+
+                        <div class="settings-subheading">Session</div>
+                        <button type="button" class="btn-danger" id="btnSignOut">
+                            <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
+                            <span>Sign Out</span>
+                        </button>
+                    </div>
+
+                    <!-- Appearance -->
+                    <div class="settings-panel" id="panel-appearance">
+                        <div class="settings-subheading">Display</div>
+                        <div class="toggle-row">
+                            <div class="toggle-label">
+                                <h5>Dark Mode</h5>
+                                <p>Switch the whole app to a dark color scheme. Saved to this browser.</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="settingsDarkModeToggle" class="theme-toggle-checkbox">
+                                <span class="switch-slider"></span>
+                            </label>
                         </div>
-                        <div class="form-actions">
-                            <button type="submit" class="btn-primary-action" id="changePasswordSubmitBtn">
-                                <i data-lucide="key-round" style="width: 16px; height: 16px;"></i>
-                                <span>Update Password</span>
+                        <div class="toggle-row">
+                            <div class="toggle-label">
+                                <h5>Start with Sidebar Minimized</h5>
+                                <p>Keep the sidebar collapsed to icons only every time you load the app.</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="prefMinimizeSidebar">
+                                <span class="switch-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Notifications -->
+                    <div class="settings-panel" id="panel-notifications">
+                        <div class="settings-subheading">Email &amp; Browser Alerts</div>
+                        <p class="form-hint" style="margin-bottom: 14px;">These preferences are saved in this browser
+                            only for now &mdash; there's no email or push notification service connected yet, so
+                            toggling them won't send anything just yet.</p>
+                        <div class="toggle-row">
+                            <div class="toggle-label">
+                                <h5>Equipment checked out</h5>
+                                <p>Notify me when any equipment is checked out.</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" data-pref="notify-checkout">
+                                <span class="switch-slider"></span>
+                            </label>
+                        </div>
+                        <div class="toggle-row">
+                            <div class="toggle-label">
+                                <h5>Equipment returned</h5>
+                                <p>Notify me when equipment is returned.</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" data-pref="notify-return">
+                                <span class="switch-slider"></span>
+                            </label>
+                        </div>
+                        <div class="toggle-row">
+                            <div class="toggle-label">
+                                <h5>New user registrations</h5>
+                                <p>Notify me when a new student account signs up.</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" data-pref="notify-signup">
+                                <span class="switch-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Hardware & Data -->
+                    <div class="settings-panel" id="panel-hardware">
+                        <div class="settings-subheading">ESP32 Scanner Device</div>
+                        <p class="form-hint" style="margin-bottom: 14px;">These two actions are simulated in the
+                            browser for now &mdash; there's no live command channel to the ESP32 yet, so they don't
+                            touch the real device.</p>
+                        <div class="form-actions" style="margin-bottom: 24px;">
+                            <button type="button" class="btn-outline" id="btnRecalibrateSensor">
+                                <i data-lucide="scan-line" style="width: 16px; height: 16px;"></i>
+                                <span>Recalibrate Scanner</span>
+                            </button>
+                            <button type="button" class="btn-outline" id="btnRestartDevice">
+                                <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                                <span>Restart Device</span>
                             </button>
                         </div>
-                    </form>
 
-                    <div class="settings-divider"></div>
+                        <div class="settings-divider"></div>
 
-                    <div class="settings-subheading">Active Sessions</div>
-                    <p style="font-size: 0.85rem; color: var(--color-text-secondary); margin-bottom: 14px;">
-                        If you signed in on a shared or unfamiliar device, you can end every other active session
-                        for this account.
-                    </p>
-                    <div class="form-actions">
-                        <button type="button" class="btn-outline" id="btnSignOutOthers">
-                            <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
-                            <span>Sign Out of All Other Devices</span>
-                        </button>
+                        <div class="settings-subheading">Data</div>
+                        <p class="form-hint" style="margin-bottom: 14px;">Your database is already backed up
+                            continuously by Supabase. Use Export below to download a CSV snapshot for your own
+                            records.</p>
+                        <div class="form-row" style="align-items: end;">
+                            <div class="form-group">
+                                <label for="exportTableSelect">Data to export</label>
+                                <select id="exportTableSelect" class="form-control no-icon">
+                                    <option value="items">Equipment Inventory</option>
+                                    <option value="transactions">Activity Logs</option>
+                                    <option value="profiles">Users &amp; Directory</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <button type="button" class="btn-primary-action" id="btnExportData"
+                                    style="width: 100%;">
+                                    <i data-lucide="download" style="width: 16px; height: 16px;"></i>
+                                    <span>Export CSV</span>
+                                </button>
+                            </div>
+                        </div>
+                        <span id="exportStatusText" class="form-hint"></span>
                     </div>
                 </div>
-
-                <!-- Panel: Notifications -->
-                <div class="settings-panel glass-panel" id="panel-notifications">
-                    <div class="card-title-bar">
-                        <h3>Notification Preferences</h3>
-                    </div>
-
-                    <div class="toggle-row">
-                        <div class="toggle-label">
-                            <h5>Door Access Alerts</h5>
-                            <p>Get notified every time the tech room door is unlocked or accessed.</p>
-                        </div>
-                        <label class="switch">
-                            <input type="checkbox" data-pref="door-access-alerts" checked>
-                            <span class="switch-slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="toggle-row">
-                        <div class="toggle-label">
-                            <h5>Overdue Return Reminders</h5>
-                            <p>Alert admins when borrowed equipment passes its expected return time.</p>
-                        </div>
-                        <label class="switch">
-                            <input type="checkbox" data-pref="overdue-alerts" checked>
-                            <span class="switch-slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="toggle-row">
-                        <div class="toggle-label">
-                            <h5>Low Stock Alerts</h5>
-                            <p>Notify when an equipment category is running low on available units.</p>
-                        </div>
-                        <label class="switch">
-                            <input type="checkbox" data-pref="low-stock-alerts">
-                            <span class="switch-slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="toggle-row">
-                        <div class="toggle-label">
-                            <h5>System &amp; Backup Alerts</h5>
-                            <p>Notify when a scheduled cloud backup fails or a device goes offline.</p>
-                        </div>
-                        <label class="switch">
-                            <input type="checkbox" data-pref="system-alerts" checked>
-                            <span class="switch-slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="toggle-row">
-                        <div class="toggle-label">
-                            <h5>Email Notifications</h5>
-                            <p>Also send the alerts above to your registered email address.</p>
-                        </div>
-                        <label class="switch">
-                            <input type="checkbox" data-pref="email-notifications">
-                            <span class="switch-slider"></span>
-                        </label>
-                    </div>
-                </div>
-
-                <!-- Panel: Access Control -->
-                <div class="settings-panel glass-panel" id="panel-access">
-                    <div class="card-title-bar">
-                        <h3>Access Control</h3>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="autoLockTimer">Auto-Lock Timer</label>
-                            <select id="autoLockTimer" class="form-control no-icon">
-                                <option value="5">5 seconds</option>
-                                <option value="10" selected>10 seconds</option>
-                                <option value="15">15 seconds</option>
-                                <option value="30">30 seconds</option>
-                                <option value="60">60 seconds</option>
-                            </select>
-                            <span class="form-hint">How long the door stays unlocked after a Remote Unlock or
-                                verified access.</span>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="doorOpenThreshold">Door-Left-Open Alert</label>
-                            <select id="doorOpenThreshold" class="form-control no-icon">
-                                <option value="1">After 1 minute</option>
-                                <option value="3" selected>After 3 minutes</option>
-                                <option value="5">After 5 minutes</option>
-                                <option value="10">After 10 minutes</option>
-                            </select>
-                            <span class="form-hint">Trigger an alert if the door sensor stays open past this
-                                limit.</span>
-                        </div>
-                    </div>
-
-                    <div class="toggle-row">
-                        <div class="toggle-label">
-                            <h5>Require Confirmation on Remote Unlock</h5>
-                            <p>Show a confirmation prompt before unlocking the door remotely from the dashboard.</p>
-                        </div>
-                        <label class="switch">
-                            <input type="checkbox" data-pref="confirm-remote-unlock" checked>
-                            <span class="switch-slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="toggle-row">
-                        <div class="toggle-label">
-                            <h5>Restrict Access to Registered Biometrics Only</h5>
-                            <p>Block door access attempts from fingerprints not enrolled in the system.</p>
-                        </div>
-                        <label class="switch">
-                            <input type="checkbox" data-pref="restrict-biometrics" checked>
-                            <span class="switch-slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="settings-divider"></div>
-
-                    <div class="settings-subheading">Emergency Contact</div>
-                    <div class="form-group" style="max-width: 380px;">
-                        <label for="emergencyContact">Notify this number on Emergency Lockdown</label>
-                        <div class="input-wrapper">
-                            <i data-lucide="phone" class="input-icon"></i>
-                            <input type="tel" id="emergencyContact" class="form-control"
-                                placeholder="e.g. +63 917 000 0000">
-                        </div>
-                    </div>
-
-                    <div class="form-actions">
-                        <button type="button" class="btn-primary-action">
-                            <i data-lucide="save" style="width: 16px; height: 16px;"></i>
-                            <span>Save Access Settings</span>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Panel: Device & Hardware -->
-                <div class="settings-panel glass-panel" id="panel-device">
-                    <div class="card-title-bar">
-                        <h3>Device &amp; Hardware</h3>
-                    </div>
-
-                    <div class="system-status-list">
-                        <div class="system-status-item">
-                            <div class="status-item-left">
-                                <i data-lucide="cpu"></i>
-                                <span>ESP32 Controller</span>
-                            </div>
-                            <span class="status-pill">Online &bull; 192.168.1.42</span>
-                        </div>
-
-                        <div class="system-status-item">
-                            <div class="status-item-left">
-                                <i data-lucide="scan-line"></i>
-                                <span>Barcode / QR Scanner</span>
-                            </div>
-                            <span class="status-pill">Online</span>
-                        </div>
-
-                        <div class="system-status-item">
-                            <div class="status-item-left">
-                                <i data-lucide="fingerprint"></i>
-                                <span>Biometric Sensor</span>
-                            </div>
-                            <span class="status-pill">Online</span>
-                        </div>
-
-                        <div class="system-status-item">
-                            <div class="status-item-left">
-                                <i data-lucide="tag"></i>
-                                <span>Firmware Version</span>
-                            </div>
-                            <span class="status-pill" style="color: var(--color-text-secondary);">v1.2.0</span>
-                        </div>
-                    </div>
-
-                
-
-                    <div class="settings-subheading">Maintenance</div>
-                    <div class="form-actions" style="flex-wrap: wrap;">
-                        <button type="button" class="btn-outline" id="btnRecalibrateSensor">
-                            <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
-                            <span>Recalibrate Biometric Sensor</span>
-                        </button>
-                        <button type="button" class="btn-danger" id="btnRestartDevice">
-                            <i data-lucide="power" style="width: 16px; height: 16px;"></i>
-                            <span>Restart ESP32 Device</span>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Panel: Backup & Data -->
-                <div class="settings-panel glass-panel" id="panel-backup">
-                    <div class="card-title-bar">
-                        <h3>Backup &amp; Data</h3>
-                    </div>
-
-                    <div class="toggle-row">
-                        <div class="toggle-label">
-                            <h5>Automatic Cloud Backup</h5>
-                            <p>Regularly sync inventory, users, and activity logs to Supabase / Google Sheets.</p>
-                        </div>
-                        <label class="switch">
-                            <input type="checkbox" data-pref="auto-backup" checked>
-                            <span class="switch-slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="form-group" style="max-width: 320px; margin-top: 14px;">
-                        <label for="backupFrequency">Backup Frequency</label>
-                        <select id="backupFrequency" class="form-control no-icon">
-                            <option value="6h">Every 6 hours</option>
-                            <option value="daily" selected>Daily</option>
-                            <option value="weekly">Weekly</option>
-                        </select>
-                    </div>
-
-                    <div class="settings-divider"></div>
-
-                    <div class="system-status-list">
-                        <div class="system-status-item">
-                            <div class="status-item-left">
-                                <i data-lucide="database"></i>
-                                <span>Last Backup</span>
-                            </div>
-                            <span class="status-pill" id="lastBackupText">Today, 08:00 AM</span>
-                        </div>
-                        <div class="system-status-item">
-                            <div class="status-item-left">
-                                <i data-lucide="table"></i>
-                                <span>Google Sheets Sync</span>
-                            </div>
-                            <span class="status-pill">Connected</span>
-                        </div>
-                    </div>
-
-                    <div class="settings-divider"></div>
-
-                    <div class="form-actions" style="flex-wrap: wrap;">
-                        <button type="button" class="btn-primary-action" id="btnBackupNow">
-                            <i data-lucide="cloud-upload" style="width: 16px; height: 16px;"></i>
-                            <span>Backup Now</span>
-                        </button>
-                        <button type="button" class="btn-outline" id="btnExportData">
-                            <i data-lucide="download" style="width: 16px; height: 16px;"></i>
-                            <span>Export All Data (CSV)</span>
-                        </button>
-                    </div>
-                </div>
-
-            </section>
-        </div>
+            </div>
+        </section>
 
         <!-- Footer Copyright -->
         <footer class="app-footer">

@@ -3,6 +3,9 @@
 
 <head>
     <meta charset="UTF-8">
+    <!-- Applies the saved dark/light choice before first paint, so the page
+         never flashes light-mode then flips to dark. -->
+    <script>(function(){try{var t=localStorage.getItem('coeqroom-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CO-EQROOM - Inventory</title>
     <!-- Fonts -->
@@ -14,14 +17,358 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="Styles/styles-web.css">
     <script src="Scripts/animations.js" defer></script>
+    <script src="Scripts/theme.js" defer></script>
     <script type="module">
-        import { requireAuth, logout } from './Scripts/auth-guard.js';
-        requireAuth();
+        import { requireAdmin, logout } from './Scripts/auth-guard.js';
+        import { supabase } from './Scripts/supabase-config.js';
+
+        await requireAdmin();
 
         document.getElementById('logoutNavLink')?.addEventListener('click', (e) => {
             e.preventDefault();
             logout();
         });
+
+        // ============================================================
+        // INVENTORY — live from Supabase `items`. Admins can add, edit
+        // (including flipping status back to "available" on a return),
+        // and delete equipment here. "Last Borrowed By" is computed from
+        // the most recent `transactions` row with action = 'borrow' for
+        // that item_qr (no FK join -- same reasoning as activity-logs.html).
+        // ============================================================
+
+        const tbody = document.getElementById('inventoryTableBody');
+        const metricTotal = document.getElementById('metricTotalEquipment');
+        const metricAvailable = document.getElementById('metricAvailable');
+        const metricBorrowed = document.getElementById('metricBorrowed');
+        const metricMaintenance = document.getElementById('metricMaintenance');
+        const showingCountEl = document.getElementById('inventoryShowingCount');
+        const paginationEl = document.getElementById('inventoryPagination');
+        const searchInput = document.getElementById('inventorySearchInput');
+        const categoryFilter = document.getElementById('inventoryCategoryFilter');
+
+        const modalOverlay = document.getElementById('equipmentModalOverlay');
+        const modalTitle = document.getElementById('equipmentModalTitle');
+        const equipmentForm = document.getElementById('equipmentForm');
+        const editingIdInput = document.getElementById('equipmentEditingId');
+        const nameInput = document.getElementById('equipmentName');
+        const qrInput = document.getElementById('equipmentQr');
+        const categoryInput = document.getElementById('equipmentCategory');
+        const rackInput = document.getElementById('equipmentRack');
+        const statusSelect = document.getElementById('equipmentStatus');
+        const saveBtn = document.getElementById('equipmentSaveBtn');
+
+        const PAGE_SIZE = 10;
+        const STUDENT_NAME_FIELDS = ['full_name', 'fullname', 'name', 'student_name', 'first_name'];
+
+        let currentPage = 1;
+        let allItems = [];
+        let studentsById = new Map();
+        let lastBorrowedByQr = new Map(); // item_qr -> display name
+
+        function studentDisplayName(studentId) {
+            const s = studentsById.get(studentId);
+            if (s) {
+                for (const field of STUDENT_NAME_FIELDS) {
+                    if (s[field]) return s[field];
+                }
+            }
+            return studentId;
+        }
+
+        function statusIcon(status) {
+            if (status === 'borrowed') return 'log-out';
+            if (status === 'maintenance') return 'wrench';
+            return 'check-circle';
+        }
+
+        function statusBadgeStyle(status) {
+            if (status === 'borrowed') return 'background: rgba(255, 104, 19, 0.15); color: var(--color-primary);';
+            if (status === 'maintenance') return 'background: rgba(239, 68, 68, 0.15); color: var(--color-danger);';
+            return 'background: rgba(34, 197, 94, 0.15); color: var(--color-success);';
+        }
+
+        function openModal(editing) {
+            equipmentForm.reset();
+            if (editing) {
+                modalTitle.textContent = 'Edit Equipment';
+                editingIdInput.value = editing.id;
+                nameInput.value = editing.item_name || '';
+                qrInput.value = editing.item_qr || '';
+                categoryInput.value = editing.category || '';
+                rackInput.value = editing.storage_rack || '';
+                statusSelect.value = editing.status || 'available';
+            } else {
+                modalTitle.textContent = 'Add Equipment';
+                editingIdInput.value = '';
+                statusSelect.value = 'available';
+            }
+            modalOverlay.hidden = false;
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        function closeModal() {
+            modalOverlay.hidden = true;
+        }
+
+        document.getElementById('btnAddEquipment')?.addEventListener('click', () => openModal(null));
+        document.getElementById('equipmentCancelBtn')?.addEventListener('click', closeModal);
+        document.getElementById('equipmentModalCloseBtn')?.addEventListener('click', closeModal);
+        modalOverlay?.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) closeModal();
+        });
+
+        equipmentForm?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const editingId = editingIdInput.value;
+            const payload = {
+                item_name: nameInput.value.trim(),
+                item_qr: qrInput.value.trim(),
+                category: categoryInput.value.trim() || null,
+                storage_rack: rackInput.value.trim() || null,
+                status: statusSelect.value
+            };
+
+            saveBtn.disabled = true;
+            // .select() is required here, not just for convenience: without it,
+            // a row-level-security policy silently filtering out the row (e.g.
+            // is_admin() returning false for the current account) still comes
+            // back as a "successful" response with no error and no data --
+            // PostgREST has no other way to report "matched zero rows". Only by
+            // asking for the row back can we tell a real save from a no-op.
+            let error, data;
+            if (editingId) {
+                ({ error, data } = await supabase.from('items').update(payload).eq('id', editingId).select());
+            } else {
+                ({ error, data } = await supabase.from('items').insert(payload).select());
+            }
+            saveBtn.disabled = false;
+
+            if (error) {
+                if (error.code === '23505') {
+                    alert('That Asset ID / barcode is already used by another item.');
+                } else {
+                    alert('Could not save equipment: ' + error.message);
+                }
+                return;
+            }
+
+            if (!data || data.length === 0) {
+                alert('Nothing was saved. Your Supabase account most likely isn\'t recognized as an admin (the is_admin() check failed), so the update was silently blocked by Row Level Security. Check that your profiles.role is set correctly for this account.');
+                return;
+            }
+
+            closeModal();
+            await loadItems();
+        });
+
+        async function deleteItem(item) {
+            if (!confirm(`Delete "${item.item_name}"? This cannot be undone.`)) return;
+            const { error, data } = await supabase.from('items').delete().eq('id', item.id).select();
+            if (error) {
+                alert('Could not delete equipment: ' + error.message);
+                return;
+            }
+            if (!data || data.length === 0) {
+                alert('Nothing was deleted. Your Supabase account most likely isn\'t recognized as an admin (the is_admin() check failed), so the delete was silently blocked by Row Level Security.');
+                return;
+            }
+            await loadItems();
+        }
+
+        function computeFiltered() {
+            const query = (searchInput?.value || '').trim().toLowerCase();
+            const category = categoryFilter?.value || 'all';
+            return allItems.filter((item) => {
+                const matchesQuery = !query ||
+                    (item.item_name || '').toLowerCase().includes(query) ||
+                    (item.item_qr || '').toLowerCase().includes(query);
+                const matchesCategory = category === 'all' || (item.category || '') === category;
+                return matchesQuery && matchesCategory;
+            });
+        }
+
+        function renderCategoryOptions() {
+            if (!categoryFilter) return;
+            const categories = Array.from(new Set(allItems.map((i) => i.category).filter(Boolean))).sort();
+            const currentValue = categoryFilter.value || 'all';
+            categoryFilter.innerHTML = '<option value="all">All Categories</option>' +
+                categories.map((c) => `<option value="${c}">${c}</option>`).join('');
+            categoryFilter.value = categories.includes(currentValue) ? currentValue : 'all';
+        }
+
+        function renderMetrics() {
+            const total = allItems.length;
+            const available = allItems.filter((i) => i.status === 'available').length;
+            const borrowed = allItems.filter((i) => i.status === 'borrowed').length;
+            const maintenance = allItems.filter((i) => i.status === 'maintenance').length;
+            if (metricTotal) metricTotal.textContent = total;
+            if (metricAvailable) metricAvailable.textContent = available;
+            if (metricBorrowed) metricBorrowed.textContent = borrowed;
+            if (metricMaintenance) metricMaintenance.textContent = maintenance;
+        }
+
+        function renderRow(item) {
+            const lastBorrower = lastBorrowedByQr.get(item.item_qr);
+            const status = item.status || 'available';
+            const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong>${item.item_qr}</strong></td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="activity-badge" style="${statusBadgeStyle(status)}">
+                            <i data-lucide="${statusIcon(status)}" style="width: 16px; height: 16px;"></i>
+                        </div>
+                        <span>${item.item_name}</span>
+                    </div>
+                </td>
+                <td>${item.category || '&mdash;'}</td>
+                <td>${item.storage_rack || '&mdash;'}</td>
+                <td>${lastBorrower || '&mdash;'}</td>
+                <td><span class="status-tag ${status}">&bull; ${statusLabel}</span></td>
+                <td>
+                    <div class="action-buttons-cell" style="justify-content: center;">
+                        <button class="btn-icon-action edit" aria-label="Edit Item"><i data-lucide="pencil" style="width: 15px; height: 15px;"></i></button>
+                        <button class="btn-icon-action delete" aria-label="Delete Item"><i data-lucide="trash-2" style="width: 15px; height: 15px;"></i></button>
+                    </div>
+                </td>
+            `;
+            tr.querySelector('.btn-icon-action.edit').addEventListener('click', () => openModal(item));
+            tr.querySelector('.btn-icon-action.delete').addEventListener('click', () => deleteItem(item));
+            return tr;
+        }
+
+        function renderPagination(totalFiltered) {
+            if (!paginationEl) return;
+            const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
+            if (currentPage > totalPages) currentPage = totalPages;
+            paginationEl.innerHTML = '';
+
+            const prevBtn = document.createElement('button');
+            prevBtn.className = 'page-btn';
+            prevBtn.setAttribute('aria-label', 'Previous');
+            prevBtn.textContent = '<';
+            prevBtn.disabled = currentPage === 1;
+            prevBtn.addEventListener('click', () => { currentPage--; renderTable(); });
+            paginationEl.appendChild(prevBtn);
+
+            const windowSize = 5;
+            let start = Math.max(1, currentPage - Math.floor(windowSize / 2));
+            let end = Math.min(totalPages, start + windowSize - 1);
+            start = Math.max(1, end - windowSize + 1);
+
+            for (let p = start; p <= end; p++) {
+                const btn = document.createElement('button');
+                btn.className = 'page-btn' + (p === currentPage ? ' active' : '');
+                btn.textContent = p;
+                btn.addEventListener('click', () => { currentPage = p; renderTable(); });
+                paginationEl.appendChild(btn);
+            }
+
+            const nextBtn = document.createElement('button');
+            nextBtn.className = 'page-btn';
+            nextBtn.setAttribute('aria-label', 'Next');
+            nextBtn.textContent = '>';
+            nextBtn.disabled = currentPage === totalPages;
+            nextBtn.addEventListener('click', () => { currentPage++; renderTable(); });
+            paginationEl.appendChild(nextBtn);
+        }
+
+        function renderTable() {
+            if (!tbody) return;
+            const filtered = computeFiltered();
+            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+            if (currentPage > totalPages) currentPage = totalPages;
+            const startIdx = (currentPage - 1) * PAGE_SIZE;
+            const pageItems = filtered.slice(startIdx, startIdx + PAGE_SIZE);
+
+            tbody.innerHTML = '';
+            if (pageItems.length === 0) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="7" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">No equipment found. Click "Add Equipment" to add your first item.</td>`;
+                tbody.appendChild(tr);
+            } else {
+                for (const item of pageItems) tbody.appendChild(renderRow(item));
+            }
+
+            if (window.lucide) window.lucide.createIcons();
+
+            if (showingCountEl) {
+                const shownFrom = filtered.length ? startIdx + 1 : 0;
+                const shownTo = Math.min(startIdx + PAGE_SIZE, filtered.length);
+                showingCountEl.textContent = `Showing ${shownFrom} to ${shownTo} of ${filtered.length} entries`;
+            }
+
+            renderPagination(filtered.length);
+            renderMetrics();
+        }
+
+        async function loadStudents() {
+            const { data, error } = await supabase.from('students').select('*');
+            if (error) {
+                console.error('Failed to load students:', error);
+                return;
+            }
+            studentsById = new Map((data || []).map((s) => [s.student_id, s]));
+        }
+
+        async function loadLastBorrowedBy() {
+            const { data, error } = await supabase
+                .from('transactions')
+                .select('item_qr, student_id, created_at')
+                .eq('action', 'borrow')
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error('Failed to load borrow history:', error);
+                return;
+            }
+
+            lastBorrowedByQr = new Map();
+            for (const row of data || []) {
+                if (!lastBorrowedByQr.has(row.item_qr)) {
+                    lastBorrowedByQr.set(row.item_qr, studentDisplayName(row.student_id));
+                }
+            }
+        }
+
+        async function loadItems() {
+            const { data, error } = await supabase
+                .from('items')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error('Failed to load items:', error);
+                return;
+            }
+
+            allItems = data || [];
+            renderCategoryOptions();
+            await loadLastBorrowedBy();
+            renderTable();
+        }
+
+        function subscribeRealtime() {
+            supabase
+                .channel('inventory-live')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, () => {
+                    loadItems();
+                })
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions' }, () => {
+                    loadLastBorrowedBy().then(renderTable);
+                })
+                .subscribe();
+        }
+
+        searchInput?.addEventListener('input', () => { currentPage = 1; renderTable(); });
+        categoryFilter?.addEventListener('change', () => { currentPage = 1; renderTable(); });
+
+        await loadStudents();
+        await loadItems();
+        subscribeRealtime();
     </script>
 </head>
 
@@ -136,7 +483,7 @@
                     </div>
                     <div class="metric-data">
                         <div class="metric-label">Total Equipment</div>
-                        <div class="metric-value">128</div>
+                        <div class="metric-value" id="metricTotalEquipment">0</div>
                         <a href="#equipment" class="metric-link">All records</a>
                     </div>
                 </div>
@@ -147,7 +494,7 @@
                     </div>
                     <div class="metric-data">
                         <div class="metric-label">Available</div>
-                        <div class="metric-value">89</div>
+                        <div class="metric-value" id="metricAvailable">0</div>
                         <a href="#available" class="metric-link">In storage</a>
                     </div>
                 </div>
@@ -158,7 +505,7 @@
                     </div>
                     <div class="metric-data">
                         <div class="metric-label">Borrowed</div>
-                        <div class="metric-value">27</div>
+                        <div class="metric-value" id="metricBorrowed">0</div>
                         <a href="#borrowed" class="metric-link">Checked out</a>
                     </div>
                 </div>
@@ -169,7 +516,7 @@
                     </div>
                     <div class="metric-data">
                         <div class="metric-label">Maintenance</div>
-                        <div class="metric-value">12</div>
+                        <div class="metric-value" id="metricMaintenance">0</div>
                         <a href="#maintenance" class="metric-link">Under repair</a>
                     </div>
                 </div>
@@ -188,14 +535,10 @@
                 <div class="search-filter-wrapper">
                     <div class="search-box">
                         <i data-lucide="search"></i>
-                        <input type="text" class="table-search-input" placeholder="Search equipment or barcode...">
+                        <input type="text" id="inventorySearchInput" class="table-search-input" placeholder="Search equipment or barcode...">
                     </div>
-                    <select class="filter-select" aria-label="Filter by category">
+                    <select class="filter-select" id="inventoryCategoryFilter" aria-label="Filter by category">
                         <option value="all">All Categories</option>
-                        <option value="power-tools">Power Tools</option>
-                        <option value="hand-tools">Hand Tools</option>
-                        <option value="measuring">Measuring Instruments</option>
-                        <option value="iot">IoT Kits & Sensors</option>
                     </select>
                 </div>
             </div>
@@ -213,142 +556,83 @@
                             <th style="text-align: center;">Action</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="inventoryTableBody">
                         <tr>
-                            <td><strong>EQ-2041</strong></td>
-                            <td>
-                                <div style="display: flex; align-items: center; gap: 10px;">
-                                    <div class="activity-badge checkout"
-                                        style="background: rgba(255, 104, 19, 0.15); color: var(--color-primary);">
-                                        <i data-lucide="tool" style="width: 16px; height: 16px;"></i>
-                                    </div>
-                                    <span>Bosch Electric Hammer Drill</span>
-                                </div>
-                            </td>
-                            <td>Power Tools</td>
-                            <td>Rack A-02</td>
-                            <td>Miguel Santos</td>
-                            <td><span class="status-tag borrowed">&bull; Borrowed</span></td>
-                            <td>
-                                <div class="action-buttons-cell" style="justify-content: center;">
-                                    <button class="btn-icon-action edit" aria-label="Edit Item"><i data-lucide="pencil"
-                                            style="width: 15px; height: 15px;"></i></button>
-                                    <button class="btn-icon-action delete" aria-label="Delete Item"><i
-                                            data-lucide="trash-2" style="width: 15px; height: 15px;"></i></button>
-                                </div>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td><strong>EQ-1882</strong></td>
-                            <td>
-                                <div style="display: flex; align-items: center; gap: 10px;">
-                                    <div class="activity-badge access"
-                                        style="background: rgba(34, 197, 94, 0.15); color: var(--color-success);">
-                                        <i data-lucide="tool" style="width: 16px; height: 16px;"></i>
-                                    </div>
-                                    <span>Precision Screwdriver Set (24-pc)</span>
-                                </div>
-                            </td>
-                            <td>Hand Tools</td>
-                            <td>Rack B-04</td>
-                            <td>Jay Reuben Yangco</td>
-                            <td><span class="status-tag available">&bull; Available</span></td>
-                            <td>
-                                <div class="action-buttons-cell" style="justify-content: center;">
-                                    <button class="btn-icon-action edit" aria-label="Edit Item"><i data-lucide="pencil"
-                                            style="width: 15px; height: 15px;"></i></button>
-                                    <button class="btn-icon-action delete" aria-label="Delete Item"><i
-                                            data-lucide="trash-2" style="width: 15px; height: 15px;"></i></button>
-                                </div>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td><strong>EQ-3091</strong></td>
-                            <td>
-                                <div style="display: flex; align-items: center; gap: 10px;">
-                                    <div class="activity-badge"
-                                        style="background: rgba(59, 130, 246, 0.15); color: var(--color-info);">
-                                        <i data-lucide="cpu" style="width: 16px; height: 16px;"></i>
-                                    </div>
-                                    <span>Digital Oscilloscope Rigol 50MHz</span>
-                                </div>
-                            </td>
-                            <td>Measuring Instruments</td>
-                            <td>Bench 03</td>
-                            <td>Francis Perez</td>
-                            <td><span class="status-tag available">&bull; Available</span></td>
-                            <td>
-                                <div class="action-buttons-cell" style="justify-content: center;">
-                                    <button class="btn-icon-action edit" aria-label="Edit Item"><i data-lucide="pencil"
-                                            style="width: 15px; height: 15px;"></i></button>
-                                    <button class="btn-icon-action delete" aria-label="Delete Item"><i
-                                            data-lucide="trash-2" style="width: 15px; height: 15px;"></i></button>
-                                </div>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td><strong>EQ-1049</strong></td>
-                            <td>
-                                <div style="display: flex; align-items: center; gap: 10px;">
-                                    <div class="activity-badge"
-                                        style="background: rgba(239, 68, 68, 0.15); color: var(--color-danger);">
-                                        <i data-lucide="wrench" style="width: 16px; height: 16px;"></i>
-                                    </div>
-                                    <span>Rotary Angle Grinder 850W</span>
-                                </div>
-                            </td>
-                            <td>Power Tools</td>
-                            <td>Service Bay</td>
-                            <td>Godofredo Zapanta</td>
-                            <td><span class="status-tag maintenance">&bull; Maintenance</span></td>
-                            <td>
-                                <div class="action-buttons-cell" style="justify-content: center;">
-                                    <button class="btn-icon-action edit" aria-label="Edit Item"><i data-lucide="pencil"
-                                            style="width: 15px; height: 15px;"></i></button>
-                                    <button class="btn-icon-action delete" aria-label="Delete Item"><i
-                                            data-lucide="trash-2" style="width: 15px; height: 15px;"></i></button>
-                                </div>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td><strong>EQ-4110</strong></td>
-                            <td>
-                                <div style="display: flex; align-items: center; gap: 10px;">
-                                    <div class="activity-badge access"
-                                        style="background: rgba(34, 197, 94, 0.15); color: var(--color-success);">
-                                        <i data-lucide="wifi" style="width: 16px; height: 16px;"></i>
-                                    </div>
-                                    <span>ESP32 NodeMCU IoT Starter Pack</span>
-                                </div>
-                            </td>
-                            <td>IoT Kits & Sensors</td>
-                            <td>Cabinet C-01</td>
-                            <td>Jhon Mark Garinggo</td>
-                            <td><span class="status-tag available">&bull; Available</span></td>
-                            <td>
-                                <div class="action-buttons-cell" style="justify-content: center;">
-                                    <button class="btn-icon-action edit" aria-label="Edit Item"><i data-lucide="pencil"
-                                            style="width: 15px; height: 15px;"></i></button>
-                                    <button class="btn-icon-action delete" aria-label="Delete Item"><i
-                                            data-lucide="trash-2" style="width: 15px; height: 15px;"></i></button>
-                                </div>
-                            </td>
+                            <td colspan="7" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">Loading inventory...</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
 
             <div class="table-footer-bar">
-                <span>Showing 1 to 5 of 128 entries</span>
-                <div class="pagination-controls">
-                    <button class="page-btn" aria-label="Previous">&lt;</button>
-                    <button class="page-btn active">1</button>
-                    <button class="page-btn">2</button>
-                    <button class="page-btn">3</button>
-                    <button class="page-btn" aria-label="Next">&gt;</button>
-                </div>
+                <span id="inventoryShowingCount">Showing 0 to 0 of 0 entries</span>
+                <div class="pagination-controls" id="inventoryPagination"></div>
             </div>
         </section>
+
+        <!-- Add / Edit Equipment Modal -->
+        <div class="modal-overlay" id="equipmentModalOverlay" hidden>
+            <div class="modal-box">
+                <div class="modal-header">
+                    <h3 id="equipmentModalTitle">Add Equipment</h3>
+                    <button type="button" class="modal-close-btn" id="equipmentModalCloseBtn" aria-label="Close">
+                        <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+                    </button>
+                </div>
+                <form id="equipmentForm">
+                    <input type="hidden" id="equipmentEditingId">
+
+                    <div class="form-group">
+                        <label for="equipmentName">Equipment Name</label>
+                        <div class="input-wrapper">
+                            <i data-lucide="tag" class="input-icon"></i>
+                            <input type="text" id="equipmentName" class="form-control"
+                                placeholder="e.g. Bosch Electric Hammer Drill" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="equipmentQr">Asset ID / Barcode (QR)</label>
+                        <div class="input-wrapper">
+                            <i data-lucide="scan-line" class="input-icon"></i>
+                            <input type="text" id="equipmentQr" class="form-control"
+                                placeholder="e.g. EQ-2041" required>
+                        </div>
+                        <p style="margin-top: 6px; font-size: 0.78rem; color: var(--color-text-muted);">Must exactly match what the ESP32 scanner reads off this item's physical barcode/QR label.</p>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="equipmentCategory">Category</label>
+                            <input type="text" id="equipmentCategory" class="form-control no-icon"
+                                placeholder="e.g. Power Tools">
+                        </div>
+                        <div class="form-group">
+                            <label for="equipmentRack">Storage Rack</label>
+                            <input type="text" id="equipmentRack" class="form-control no-icon"
+                                placeholder="e.g. Rack A-02">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="equipmentStatus">Status</label>
+                        <select id="equipmentStatus" class="form-control no-icon">
+                            <option value="available">Available</option>
+                            <option value="borrowed">Borrowed</option>
+                            <option value="maintenance">Maintenance</option>
+                        </select>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn-outline" id="equipmentCancelBtn">Cancel</button>
+                        <button type="submit" class="btn-primary-action" id="equipmentSaveBtn">
+                            <i data-lucide="save" style="width: 16px; height: 16px;"></i>
+                            <span>Save Equipment</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
 
         <!-- Footer Copyright -->
         <footer class="app-footer">

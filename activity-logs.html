@@ -3,6 +3,9 @@
 
 <head>
     <meta charset="UTF-8">
+    <!-- Applies the saved dark/light choice before first paint, so the page
+         never flashes light-mode then flips to dark. -->
+    <script>(function(){try{var t=localStorage.getItem('coeqroom-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CO-EQROOM - Activity Logs</title>
     <!-- Fonts -->
@@ -14,14 +17,177 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="Styles/styles-web.css">
     <script src="Scripts/animations.js" defer></script>
+    <script src="Scripts/theme.js" defer></script>
     <script type="module">
-        import { requireAuth, logout } from './Scripts/auth-guard.js';
-        requireAuth();
+        import { requireAdmin, logout } from './Scripts/auth-guard.js';
+        import { supabase } from './Scripts/supabase-config.js';
+
+        await requireAdmin();
 
         document.getElementById('logoutNavLink')?.addEventListener('click', (e) => {
             e.preventDefault();
             logout();
         });
+
+        // ============================================================
+        // ACTIVITY LOGS — live from Supabase `transactions`, refreshed
+        // in real time via Supabase Realtime (no page refresh needed).
+        //
+        // `students` and `items` have no foreign key onto `transactions`
+        // by design (a hard FK there previously blocked deleting rows),
+        // so we pull both tables and join them here in JS by
+        // student_id / item_qr instead of asking PostgREST to embed them.
+        // ============================================================
+
+        const activityLogsBody = document.getElementById('activityLogsBody');
+        const metricTodayLogs = document.getElementById('metricTodayLogs');
+        const metricTransactions = document.getElementById('metricTransactions');
+        const logsShowingCount = document.getElementById('logsShowingCount');
+
+        const MAX_ROWS_SHOWN = 50;
+
+        // Common column names a "name" might live under on the students
+        // table — we don't assume a fixed schema, we just look for the
+        // first one that's actually present on the row.
+        const STUDENT_NAME_FIELDS = ['full_name', 'fullname', 'name', 'student_name', 'first_name'];
+
+        let itemsByQr = new Map();
+        let studentsById = new Map();
+        let allTransactions = []; // newest first
+
+        function studentDisplayName(studentId) {
+            const student = studentsById.get(studentId);
+            if (student) {
+                for (const field of STUDENT_NAME_FIELDS) {
+                    if (student[field]) return student[field];
+                }
+            }
+            return studentId;
+        }
+
+        function itemDisplayName(itemQr) {
+            const item = itemsByQr.get(itemQr);
+            return item?.item_name || itemQr;
+        }
+
+        function formatTimestamp(iso) {
+            const d = new Date(iso);
+            return d.toLocaleString('en-US', {
+                month: 'long', day: 'numeric', year: 'numeric',
+                hour: 'numeric', minute: '2-digit', hour12: true
+            });
+        }
+
+        function renderRow(tx) {
+            const isBorrow = tx.action === 'borrow';
+            const studentName = studentDisplayName(tx.student_id);
+            const itemLabel = itemDisplayName(tx.item_qr);
+            const actionWord = isBorrow ? 'Borrowed' : 'Returned';
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>#TXN-${tx.id}</td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="activity-badge ${isBorrow ? 'checkout' : 'returned'}" style="width: 28px; height: 28px;">
+                            <i data-lucide="${isBorrow ? 'arrow-right' : 'corner-down-left'}" style="width: 15px; height: 15px;"></i>
+                        </span>
+                        <span>Equipment ${isBorrow ? 'Checkout' : 'Return'}</span>
+                    </div>
+                </td>
+                <td><strong>${studentName}</strong></td>
+                <td>${actionWord}: ${itemLabel}</td>
+                <td><span class="status-tag ${isBorrow ? 'borrowed' : 'returned'}">${actionWord}</span></td>
+                <td style="color: var(--color-text-secondary);">${formatTimestamp(tx.created_at)}</td>
+                <td style="text-align: center;">
+                    <button class="btn-icon-action edit" title="View details" aria-label="View Details">
+                        <i data-lucide="file-text" style="width: 15px; height: 15px;"></i>
+                    </button>
+                </td>
+            `;
+            return tr;
+        }
+
+        function updateMetrics() {
+            if (metricTransactions) metricTransactions.textContent = allTransactions.length;
+
+            const todayStr = new Date().toDateString();
+            const todayCount = allTransactions.filter(
+                (tx) => new Date(tx.created_at).toDateString() === todayStr
+            ).length;
+            if (metricTodayLogs) metricTodayLogs.textContent = todayCount;
+
+            if (logsShowingCount) {
+                const shown = Math.min(allTransactions.length, MAX_ROWS_SHOWN);
+                logsShowingCount.textContent = `Showing ${shown ? 1 : 0} to ${shown} of ${allTransactions.length} entries`;
+            }
+        }
+
+        function renderTable() {
+            if (!activityLogsBody) return;
+
+            activityLogsBody.innerHTML = '';
+
+            if (allTransactions.length === 0) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="7" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">No scans recorded yet. Item check-ins/check-outs from the ESP32 scanner will show up here in real time.</td>`;
+                activityLogsBody.appendChild(tr);
+            } else {
+                for (const tx of allTransactions.slice(0, MAX_ROWS_SHOWN)) {
+                    activityLogsBody.appendChild(renderRow(tx));
+                }
+            }
+
+            if (window.lucide) window.lucide.createIcons();
+            updateMetrics();
+        }
+
+        async function loadLookups() {
+            const [{ data: items, error: itemsError }, { data: students, error: studentsError }] = await Promise.all([
+                supabase.from('items').select('*'),
+                supabase.from('students').select('*'),
+            ]);
+
+            if (itemsError) console.error('Failed to load items for lookup:', itemsError);
+            if (studentsError) console.error('Failed to load students for lookup:', studentsError);
+
+            itemsByQr = new Map((items || []).map((i) => [i.item_qr, i]));
+            studentsById = new Map((students || []).map((s) => [s.student_id, s]));
+        }
+
+        async function loadInitialTransactions() {
+            const { data, error } = await supabase
+                .from('transactions')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(MAX_ROWS_SHOWN);
+
+            if (error) {
+                console.error('Failed to load transactions:', error);
+                return;
+            }
+
+            allTransactions = data || [];
+            renderTable();
+        }
+
+        function subscribeToRealtimeTransactions() {
+            supabase
+                .channel('transactions-live')
+                .on(
+                    'postgres_changes',
+                    { event: 'INSERT', schema: 'public', table: 'transactions' },
+                    (payload) => {
+                        allTransactions.unshift(payload.new);
+                        renderTable();
+                    }
+                )
+                .subscribe();
+        }
+
+        await loadLookups();
+        await loadInitialTransactions();
+        subscribeToRealtimeTransactions();
     </script>
 </head>
 
@@ -136,7 +302,7 @@
                     </div>
                     <div class="metric-data">
                         <div class="metric-label">Today's Logs</div>
-                        <div class="metric-value">48</div>
+                        <div class="metric-value" id="metricTodayLogs">0</div>
                         <span style="font-size: 0.78rem; color: var(--color-success); font-weight: 600;">&uarr; Normal
                             Activity</span>
                     </div>
@@ -159,7 +325,7 @@
                     </div>
                     <div class="metric-data">
                         <div class="metric-label">Transactions</div>
-                        <div class="metric-value">22</div>
+                        <div class="metric-value" id="metricTransactions">0</div>
                         <span style="font-size: 0.78rem; color: var(--color-text-secondary);">Check-in & out</span>
                     </div>
                 </div>
@@ -216,114 +382,19 @@
                             <th style="text-align: center;">Audit</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="activityLogsBody">
                         <tr>
-                            <td>#LOG-8941</td>
-                            <td>
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <span class="activity-badge access" style="width: 28px; height: 28px;">
-                                        <i data-lucide="lock-keyhole-open" style="width: 15px; height: 15px;"></i>
-                                    </span>
-                                    <span>Door Access</span>
-                                </div>
-                            </td>
-                            <td><strong>Juan Dela Cruz</strong></td>
-                            <td>Biometric Fingerprint Verified (Door 1)</td>
-                            <td><span class="status-tag active">Granted</span></td>
-                            <td style="color: var(--color-text-secondary);">May 25, 2026 10:29 AM</td>
-                            <td style="text-align: center;">
-                                <button class="btn-icon-action edit" title="View snapshot" aria-label="View Snapshot"><i
-                                        data-lucide="eye" style="width: 15px; height: 15px;"></i></button>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>#LOG-8940</td>
-                            <td>
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <span class="activity-badge checkout" style="width: 28px; height: 28px;">
-                                        <i data-lucide="arrow-right" style="width: 15px; height: 15px;"></i>
-                                    </span>
-                                    <span>Equipment Checkout</span>
-                                </div>
-                            </td>
-                            <td><strong>Miguel Santos</strong></td>
-                            <td>Borrowed: Electric Hammer Drill (EQ-2041)</td>
-                            <td><span class="status-tag borrowed">Borrowed</span></td>
-                            <td style="color: var(--color-text-secondary);">May 25, 2026 10:20 AM</td>
-                            <td style="text-align: center;">
-                                <button class="btn-icon-action edit" title="View details" aria-label="View Details"><i
-                                        data-lucide="file-text" style="width: 15px; height: 15px;"></i></button>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>#LOG-8939</td>
-                            <td>
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <span class="activity-badge returned" style="width: 28px; height: 28px;">
-                                        <i data-lucide="corner-down-left" style="width: 15px; height: 15px;"></i>
-                                    </span>
-                                    <span>Equipment Return</span>
-                                </div>
-                            </td>
-                            <td><strong>Ana Reyes</strong></td>
-                            <td>Returned: Screwdriver Set (EQ-1882)</td>
-                            <td><span class="status-tag returned">Returned</span></td>
-                            <td style="color: var(--color-text-secondary);">May 25, 2026 09:45 AM</td>
-                            <td style="text-align: center;">
-                                <button class="btn-icon-action edit" title="View details" aria-label="View Details"><i
-                                        data-lucide="file-text" style="width: 15px; height: 15px;"></i></button>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>#LOG-8938</td>
-                            <td>
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <span class="activity-badge access" style="width: 28px; height: 28px;">
-                                        <i data-lucide="lock-keyhole-open" style="width: 15px; height: 15px;"></i>
-                                    </span>
-                                    <span>Door Access</span>
-                                </div>
-                            </td>
-                            <td><strong>Pedro Garcia</strong></td>
-                            <td>Biometric Fingerprint Verified (Door 1)</td>
-                            <td><span class="status-tag active">Granted</span></td>
-                            <td style="color: var(--color-text-secondary);">May 25, 2026 09:30 AM</td>
-                            <td style="text-align: center;">
-                                <button class="btn-icon-action edit" title="View snapshot" aria-label="View Snapshot"><i
-                                        data-lucide="eye" style="width: 15px; height: 15px;"></i></button>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>#LOG-8937</td>
-                            <td>
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <span class="activity-badge backup" style="width: 28px; height: 28px;">
-                                        <i data-lucide="database" style="width: 15px; height: 15px;"></i>
-                                    </span>
-                                    <span>Cloud Backup</span>
-                                </div>
-                            </td>
-                            <td><strong>System Automated</strong></td>
-                            <td>Backup database to Google Sheets / Cloud DB</td>
-                            <td><span class="status-tag active">Success</span></td>
-                            <td style="color: var(--color-text-secondary);">May 25, 2026 08:00 AM</td>
-                            <td style="text-align: center;">
-                                <button class="btn-icon-action edit" title="View log" aria-label="View Log"><i
-                                        data-lucide="file-text" style="width: 15px; height: 15px;"></i></button>
-                            </td>
+                            <td colspan="7" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">Loading activity...</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
 
             <div class="table-footer-bar">
-                <span>Showing 1 to 5 of 48 entries</span>
+                <span id="logsShowingCount">Showing 0 to 0 of 0 entries</span>
                 <div class="pagination-controls">
                     <button class="page-btn" aria-label="Previous">&lt;</button>
                     <button class="page-btn active">1</button>
-                    <button class="page-btn">2</button>
-                    <button class="page-btn">3</button>
-                    <button class="page-btn" aria-label="Next">&gt;</button>
                 </div>
             </div>
         </section>

@@ -3,6 +3,9 @@
 
 <head>
     <meta charset="UTF-8">
+    <!-- Applies the saved dark/light choice before first paint, so the page
+         never flashes light-mode then flips to dark. -->
+    <script>(function(){try{var t=localStorage.getItem('coeqroom-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CO-EQROOM - My Profile</title>
     <!-- Fonts -->
@@ -14,11 +17,12 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="Styles/styles-web.css">
     <script src="Scripts/animations.js" defer></script>
+    <script src="Scripts/theme.js" defer></script>
     <script type="module">
-        import { requireAuth, logout } from './Scripts/auth-guard.js';
+        import { requireAdmin, logout } from './Scripts/auth-guard.js';
         import { supabase } from './Scripts/supabase-config.js';
 
-        const session = await requireAuth();
+        const session = await requireAdmin();
         const user = session.user;
 
         document.getElementById('logoutNavLink')?.addEventListener('click', (e) => {
@@ -39,7 +43,7 @@
         document.getElementById('editFullName').value = fullName;
         document.getElementById('editEmail').value = email;
 
-        // Fetch role from the profiles table (same lookup used by auth-guard's requireRole)
+        // Fetch role from the profiles table (same lookup used by auth-guard's requireAdmin)
         try {
             const { data: profile, error } = await supabase
                 .from('profiles')
@@ -85,6 +89,83 @@
                 alert('Profile updated successfully.');
             });
         }
+
+        // ---- Recent Activity: the last few real transactions system-wide
+        // (same lookup pattern as dashboard.html) -- not "this admin's own"
+        // borrow history, since admin accounts don't typically borrow
+        // equipment themselves; this is a quick pulse of the room instead.
+        const STUDENT_NAME_FIELDS = ['full_name', 'fullname', 'name', 'student_name', 'first_name'];
+        let studentsById = new Map();
+        let itemsByQr = new Map();
+
+        function studentDisplayName(studentId) {
+            const s = studentsById.get(studentId);
+            if (s) {
+                for (const field of STUDENT_NAME_FIELDS) {
+                    if (s[field]) return s[field];
+                }
+            }
+            return studentId;
+        }
+
+        function itemDisplayName(itemQr) {
+            return itemsByQr.get(itemQr)?.item_name || itemQr;
+        }
+
+        function formatTime(iso) {
+            return new Date(iso).toLocaleString('en-US', {
+                month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
+            });
+        }
+
+        async function loadRecentActivity() {
+            const container = document.getElementById('profileActivityList');
+            if (!container) return;
+
+            const [{ data: students }, { data: items }, { data: transactions, error }] = await Promise.all([
+                supabase.from('students').select('*'),
+                supabase.from('items').select('*'),
+                supabase.from('transactions').select('*').order('created_at', { ascending: false }).limit(3),
+            ]);
+
+            studentsById = new Map((students || []).map((s) => [s.student_id, s]));
+            itemsByQr = new Map((items || []).map((i) => [i.item_qr, i]));
+
+            if (error) {
+                console.error('Failed to load recent activity:', error);
+                container.innerHTML = `<p style="color: var(--color-text-secondary); padding: 8px 4px;">Couldn't load recent activity.</p>`;
+                return;
+            }
+
+            const rows = transactions || [];
+            if (rows.length === 0) {
+                container.innerHTML = `<p style="color: var(--color-text-secondary); padding: 8px 4px;">No activity recorded yet.</p>`;
+                return;
+            }
+
+            container.innerHTML = '';
+            for (const tx of rows) {
+                const isBorrow = tx.action === 'borrow';
+                const item = document.createElement('div');
+                item.className = 'activity-mini-item';
+                item.innerHTML = `
+                    <div class="activity-item-left">
+                        <div class="activity-badge ${isBorrow ? 'checkout' : 'returned'}">
+                            <i data-lucide="${isBorrow ? 'external-link' : 'corner-down-left'}" style="width: 16px; height: 16px;"></i>
+                        </div>
+                        <div class="activity-details">
+                            <h5>${isBorrow ? 'Checked-out' : 'Returned'}: ${itemDisplayName(tx.item_qr)}</h5>
+                            <p>${studentDisplayName(tx.student_id)}</p>
+                        </div>
+                    </div>
+                    <span class="activity-time">${formatTime(tx.created_at)}</span>
+                `;
+                container.appendChild(item);
+            }
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        loadRecentActivity();
     </script>
 </head>
 
@@ -130,6 +211,10 @@
                 <i data-lucide="settings"></i>
                 <span>Settings</span>
             </a>
+            <button type="button" class="nav-link theme-toggle-btn" id="themeToggleBtn" aria-pressed="false" data-tooltip="Toggle Dark Mode">
+                <i data-lucide="moon" data-theme-icon></i>
+                <span>Dark Mode</span>
+            </button>
             <a href="login.html" class="nav-link" id="logoutNavLink" style="margin-top: auto;" data-tooltip="Logout">
                 <i data-lucide="log-out"></i>
                 <span>Logout</span>
@@ -210,9 +295,10 @@
                             <i data-lucide="shield" style="width: 12px; height: 12px;"></i>
                             <span id="profileRoleTag">Role</span>
                         </span>
-                        <span class="status-tag returned">
+                        <span class="status-tag" style="background: rgba(107, 114, 128, 0.12); color: var(--color-text-muted);"
+                            title="Not yet implemented -- no biometric enrollment on file">
                             <i data-lucide="fingerprint" style="width: 12px; height: 12px;"></i>
-                            Biometric Registered
+                            Biometric Not Enrolled
                         </span>
                     </div>
                 </div>
@@ -222,10 +308,6 @@
                 <div class="detail-item">
                     <label>Role</label>
                     <span id="profileRole">—</span>
-                </div>
-                <div class="detail-item">
-                    <label>Section</label>
-                    <span>—</span>
                 </div>
                 <div class="detail-item">
                     <label>Member Since</label>
@@ -265,26 +347,17 @@
                         </div>
                     </div>
 
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="editPhone">Phone Number</label>
-                            <div class="input-wrapper">
-                                <i data-lucide="phone" class="input-icon"></i>
-                                <input type="tel" id="editPhone" class="form-control"
-                                    placeholder="e.g. +63 917 000 0000">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="editSection">Section</label>
-                            <div class="input-wrapper">
-                                <i data-lucide="layers" class="input-icon"></i>
-                                <input type="text" id="editSection" class="form-control" placeholder="e.g. 3A">
-                            </div>
+                    <div class="form-group">
+                        <label for="editPhone">Phone Number</label>
+                        <div class="input-wrapper">
+                            <i data-lucide="phone" class="input-icon"></i>
+                            <input type="tel" id="editPhone" class="form-control"
+                                placeholder="e.g. +63 917 000 0000">
                         </div>
                     </div>
 
-                    <span class="form-hint" style="margin: -8px 0 16px;">Phone and Section are not yet linked to
-                        the database — Full Name updates save immediately.</span>
+                    <span class="form-hint" style="margin: -8px 0 16px; display: block;">Phone number isn't linked to
+                        the database yet &mdash; Full Name updates save immediately.</span>
 
                     <div class="form-actions">
                         <button type="submit" class="btn-primary-action" id="personalInfoSubmitBtn">
@@ -310,13 +383,13 @@
                             <i data-lucide="fingerprint"></i>
                             <span>Fingerprint</span>
                         </div>
-                        <span class="status-pill">Registered</span>
+                        <span class="status-pill closed" title="Not yet implemented -- no biometric enrollment on file">Not Registered</span>
                     </div>
                     <div class="form-actions" style="margin-top: 14px;">
-                        <button type="button" class="btn-outline" id="btnReenrollBiometric"
-                            style="width: 100%;" onclick="alert('Please visit the Equipment Room to re-enroll your fingerprint on the biometric scanner.')">
-                            <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
-                            <span>Re-enroll Fingerprint</span>
+                        <button type="button" class="btn-outline" id="btnEnrollBiometric"
+                            style="width: 100%;" onclick="alert('Biometric enrollment isn\'t wired up yet -- this will let you register a fingerprint on the equipment room scanner once that hardware is connected.')">
+                            <i data-lucide="fingerprint" style="width: 16px; height: 16px;"></i>
+                            <span>Enroll Fingerprint</span>
                         </button>
                     </div>
                 </div>
@@ -326,45 +399,8 @@
                         <h3>Recent Activity</h3>
                         <a href="activity-logs.html">View all</a>
                     </div>
-                    <div class="activity-mini-list">
-                        <div class="activity-mini-item">
-                            <div class="activity-item-left">
-                                <div class="activity-badge access">
-                                    <i data-lucide="log-in" style="width: 16px; height: 16px;"></i>
-                                </div>
-                                <div class="activity-details">
-                                    <h5>Logged in to System</h5>
-                                    <p>Web dashboard</p>
-                                </div>
-                            </div>
-                            <span class="activity-time">Today</span>
-                        </div>
-
-                        <div class="activity-mini-item">
-                            <div class="activity-item-left">
-                                <div class="activity-badge access">
-                                    <i data-lucide="lock-keyhole-open" style="width: 16px; height: 16px;"></i>
-                                </div>
-                                <div class="activity-details">
-                                    <h5>Door Access Granted</h5>
-                                    <p>Biometric authentication</p>
-                                </div>
-                            </div>
-                            <span class="activity-time">Yesterday</span>
-                        </div>
-
-                        <div class="activity-mini-item">
-                            <div class="activity-item-left">
-                                <div class="activity-badge returned">
-                                    <i data-lucide="corner-down-left" style="width: 16px; height: 16px;"></i>
-                                </div>
-                                <div class="activity-details">
-                                    <h5>Returned Equipment</h5>
-                                    <p>Screwdriver Set</p>
-                                </div>
-                            </div>
-                            <span class="activity-time">3 days ago</span>
-                        </div>
+                    <div class="activity-mini-list" id="profileActivityList">
+                        <p style="color: var(--color-text-secondary); padding: 8px 4px;">Loading...</p>
                     </div>
                 </div>
             </div>

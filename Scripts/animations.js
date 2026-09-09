@@ -338,11 +338,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 5. Export data placeholder action
-    const btnExportData = document.getElementById('btnExportData');
-    if (btnExportData) {
-        btnExportData.addEventListener('click', () => {
-            alert('Preparing export... this will download a CSV of all inventory, users, and activity log data once connected to the live database.');
-        });
-    }
+    // 5. Export Data is now a real CSV export wired directly in
+    // settings.html's own module script (it reads live Supabase data),
+    // so there's no generic placeholder handler here anymore.
 });

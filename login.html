@@ -3,6 +3,9 @@
 
 <head>
     <meta charset="UTF-8">
+    <!-- Applies the saved dark/light choice before first paint, so the page
+         never flashes light-mode then flips to dark. -->
+    <script>(function(){try{var t=localStorage.getItem('coeqroom-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CO-EQROOM - Login & Register</title>
     <!-- Google Fonts -->
@@ -22,6 +25,10 @@
     <!-- Floating background blur orbs for glassmorphism -->
     <div class="bg-blob bg-blob-1"></div>
     <div class="bg-blob bg-blob-2"></div>
+
+    <button type="button" class="theme-toggle-btn" id="themeToggleBtn" aria-pressed="false" aria-label="Toggle dark mode">
+        <i data-lucide="moon" data-theme-icon style="width: 18px; height: 18px;"></i>
+    </button>
 
     <header class="brand-header">
         <h1>CO-<span>EQROOM</span></h1>
@@ -97,6 +104,16 @@
                         </div>
                     </div>
                     <div class="form-group">
+                        <label for="new-student-id">Student ID</label>
+                        <div class="input-wrapper">
+                            <i data-lucide="id-card" class="input-icon"></i>
+                            <input type="text" id="new-student-id" name="studentId" class="form-control"
+                                placeholder="e.g. 23-00046" pattern="\d{2}-\d{5}" title="Format: 23-00046"
+                                maxlength="8" autocomplete="off" required>
+                        </div>
+                        <p style="margin-top: 6px; font-size: 0.78rem; color: var(--color-text-muted);">Must match the barcode on your student ID card &mdash; this is what the scanner reads.</p>
+                    </div>
+                    <div class="form-group">
                         <label for="new-username">Username or Email</label>
                         <div class="input-wrapper">
                             <i data-lucide="user" class="input-icon"></i>
@@ -147,6 +164,7 @@
 
     <!-- UI & Animation Logic -->
     <script src="Scripts/animations.js"></script>
+    <script src="Scripts/theme.js"></script>
 </body>
 
 </html>

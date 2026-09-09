@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <!-- Applies the saved dark/light choice before first paint, so the page
+         never flashes light-mode then flips to dark. -->
+    <script>(function(){try{var t=localStorage.getItem('coeqroom-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CO-EQROOM - Student Portal</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="Styles/styles-web.css">
+    <script src="Scripts/animations.js" defer></script>
+    <script src="Scripts/theme.js" defer></script>
+    <script type="module">
+        import { requireStudent, logout } from './Scripts/auth-guard.js';
+        import { supabase } from './Scripts/supabase-config.js';
+
+        const session = await requireStudent();
+
+        document.getElementById('logoutNavLink')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            logout();
+        });
+
+        // ============================================================
+        // STUDENT PORTAL — read-only view for a signed-in student:
+        //   1. Available equipment they can go borrow (from `items`).
+        //   2. Their own borrow/return history (from `transactions`,
+        //      matched to their `students` row via `profile_id`).
+        // Nothing here writes to the database. Guarded by requireStudent()
+        // above, which bounces admins back to dashboard.html.
+        // ============================================================
+
+        const NAME_FIELDS = ['full_name', 'fullname', 'name', 'display_name'];
+
+        let myProfile = null;
+        let myStudent = null;
+        let allItems = [];
+        let itemsByQr = new Map();
+        let lastBorrowerByQr = new Map(); // item_qr -> student_id of most recent borrower
+
+        function pickName(obj, fallback) {
+            if (!obj) return fallback;
+            for (const field of NAME_FIELDS) {
+                if (obj[field]) return obj[field];
+            }
+            return fallback;
+        }
+
+        async function loadMe() {
+            const { data: profile, error: profileError } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', session.user.id)
+                .single();
+            if (profileError) console.error('Failed to load profile:', profileError);
+            myProfile = profile || null;
+
+            const { data: student, error: studentError } = await supabase
+                .from('students')
+                .select('*')
+                .eq('profile_id', session.user.id)
+                .maybeSingle();
+            if (studentError) console.error('Failed to load student record:', studentError);
+            myStudent = student || null;
+
+            const displayName = pickName(myProfile, pickName(myStudent, session.user.email));
+            document.querySelectorAll('.js-student-name').forEach((el) => { el.textContent = displayName; });
+            document.querySelectorAll('.js-student-id').forEach((el) => {
+                el.textContent = myStudent?.student_id ? `ID: ${myStudent.student_id}` : 'No linked student ID yet';
+            });
+
+            if (!myStudent) {
+                const banner = document.getElementById('noStudentRecordBanner');
+                if (banner) banner.hidden = false;
+            }
+        }
+
+        // ---- Available Equipment ----
+        const equipmentBody = document.getElementById('availableEquipmentBody');
+        const equipmentSearch = document.getElementById('equipmentSearchInput');
+        const metricAvailable = document.getElementById('metricAvailable');
+        const metricMyBorrowed = document.getElementById('metricMyBorrowed');
+        const metricMyHistory = document.getElementById('metricMyHistory');
+
+        function renderAvailableEquipment() {
+            if (!equipmentBody) return;
+            const query = (equipmentSearch?.value || '').trim().toLowerCase();
+            const available = allItems
+                .filter((i) => i.status === 'available')
+                .filter((i) => !query ||
+                    (i.item_name || '').toLowerCase().includes(query) ||
+                    (i.category || '').toLowerCase().includes(query));
+
+            equipmentBody.innerHTML = '';
+            if (available.length === 0) {
+                equipmentBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">No available equipment right now.</td></tr>`;
+            } else {
+                for (const item of available) {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div class="activity-badge" style="background: rgba(34, 197, 94, 0.15); color: var(--color-success);">
+                                    <i data-lucide="check-circle" style="width: 16px; height: 16px;"></i>
+                                </div>
+                                <span>${item.item_name}</span>
+                            </div>
+                        </td>
+                        <td>${item.category || '&mdash;'}</td>
+                        <td>${item.storage_rack || '&mdash;'}</td>
+                        <td><span class="status-tag available">&bull; Available</span></td>
+                    `;
+                    equipmentBody.appendChild(tr);
+                }
+            }
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        function renderMetrics() {
+            const total = allItems.length;
+            const available = allItems.filter((i) => i.status === 'available').length;
+            const myBorrowed = myStudent
+                ? allItems.filter((i) => i.status === 'borrowed' && lastBorrowerByQr.get(i.item_qr) === myStudent.student_id).length
+                : 0;
+
+            if (metricAvailable) metricAvailable.textContent = available;
+            if (metricMyBorrowed) metricMyBorrowed.textContent = myBorrowed;
+            void total;
+        }
+
+        async function loadItems() {
+            const { data, error } = await supabase.from('items').select('*').order('item_name');
+            if (error) { console.error('Failed to load items:', error); return; }
+            allItems = data || [];
+            itemsByQr = new Map(allItems.map((i) => [i.item_qr, i]));
+            renderAvailableEquipment();
+            renderMetrics();
+        }
+
+        async function loadLastBorrowers() {
+            const { data, error } = await supabase
+                .from('transactions')
+                .select('item_qr, student_id, created_at')
+                .eq('action', 'borrow')
+                .order('created_at', { ascending: false });
+            if (error) { console.error('Failed to load borrow history:', error); return; }
+
+            lastBorrowerByQr = new Map();
+            for (const row of data || []) {
+                if (!lastBorrowerByQr.has(row.item_qr)) {
+                    lastBorrowerByQr.set(row.item_qr, row.student_id);
+                }
+            }
+            renderMetrics();
+        }
+
+        // ---- My Borrow History ----
+        const historyBody = document.getElementById('myHistoryBody');
+
+        function formatDateTime(iso) {
+            return new Date(iso).toLocaleString('en-US', {
+                month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
+            });
+        }
+
+        async function loadMyHistory() {
+            if (!historyBody) return;
+            if (!myStudent) {
+                historyBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">No linked student record yet, so there's no borrow history to show.</td></tr>`;
+                if (metricMyHistory) metricMyHistory.textContent = '0';
+                return;
+            }
+
+            const { data, error } = await supabase
+                .from('transactions')
+                .select('*')
+                .eq('student_id', myStudent.student_id)
+                .order('created_at', { ascending: false })
+                .limit(50);
+
+            if (error) { console.error('Failed to load my transactions:', error); return; }
+
+            const rows = data || [];
+            if (metricMyHistory) metricMyHistory.textContent = rows.length;
+
+            historyBody.innerHTML = '';
+            if (rows.length === 0) {
+                historyBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">No borrow activity yet.</td></tr>`;
+                return;
+            }
+
+            for (const tx of rows) {
+                const isBorrow = tx.action === 'borrow';
+                const itemName = itemsByQr.get(tx.item_qr)?.item_name || tx.item_qr;
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div class="activity-badge ${isBorrow ? 'checkout' : 'returned'}">
+                                <i data-lucide="${isBorrow ? 'external-link' : 'corner-down-left'}" style="width: 16px; height: 16px;"></i>
+                            </div>
+                            <span>${itemName}</span>
+                        </div>
+                    </td>
+                    <td><span class="status-tag ${isBorrow ? 'borrowed' : 'available'}">&bull; ${isBorrow ? 'Borrowed' : 'Returned'}</span></td>
+                    <td>${formatDateTime(tx.created_at)}</td>
+                `;
+                historyBody.appendChild(tr);
+            }
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        function subscribeRealtime() {
+            supabase
+                .channel('student-portal-live')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, () => {
+                    loadItems();
+                })
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions' }, () => {
+                    loadLastBorrowers();
+                    loadMyHistory();
+                })
+                .subscribe();
+        }
+
+        equipmentSearch?.addEventListener('input', renderAvailableEquipment);
+
+        await loadMe();
+        await loadItems();
+        await loadLastBorrowers();
+        await loadMyHistory();
+        subscribeRealtime();
+    </script>
+</head>
+
+<body>
+    <!-- Decorative background glass orbs -->
+    <div class="bg-blob bg-blob-1"></div>
+    <div class="bg-blob bg-blob-2"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="brand-banner">
+            <div class="brand-icon-shield">
+                <i data-lucide="shield" style="width: 26px; height: 26px;"></i>
+            </div>
+            <div class="brand-text">
+                <h1>CO-EQROOM</h1>
+                <p>IoT-Based Equipment Room<br>Management System</p>
+            </div>
+            <button class="btn-sidebar-collapse" id="sidebarCollapseBtn" aria-label="Toggle sidebar width"
+                title="Minimize Sidebar">
+                <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i>
+            </button>
+        </div>
+
+        <nav class="dashboard-nav">
+            <a href="student-dashboard.html" class="nav-link active" data-tooltip="My Portal">
+                <i data-lucide="home"></i>
+                <span>My Portal</span>
+            </a>
+            <button type="button" class="nav-link theme-toggle-btn" id="themeToggleBtn" aria-pressed="false" data-tooltip="Toggle Dark Mode" style="margin-top: auto;">
+                <i data-lucide="moon" data-theme-icon></i>
+                <span>Dark Mode</span>
+            </button>
+            <a href="login.html" class="nav-link" id="logoutNavLink" data-tooltip="Logout">
+                <i data-lucide="log-out"></i>
+                <span>Logout</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-profile-chip">
+                <div class="user-profile-info">
+                    <div class="avatar">
+                        <i data-lucide="user" style="color: #6B7280; width: 22px; height: 22px;"></i>
+                    </div>
+                    <div class="profile-meta">
+                        <h4 class="js-student-name">Student</h4>
+                        <p class="js-student-id">ID: &mdash;</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Top Header Bar -->
+        <header class="top-header">
+            <div class="header-left">
+                <button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation">
+                    <i data-lucide="menu"></i>
+                </button>
+                <h2 class="page-title">My Portal</h2>
+            </div>
+            <div class="header-right">
+                <div class="live-datetime">
+                    <div class="datetime-item">
+                        <i data-lucide="calendar"></i>
+                        <span id="liveDate">May 25, 2026</span>
+                    </div>
+                    <span class="datetime-separator">|</span>
+                    <div class="datetime-item">
+                        <i data-lucide="clock"></i>
+                        <span id="liveTime">10:30 AM</span>
+                    </div>
+                </div>
+                <div class="header-user">
+                    <div class="avatar" style="width: 34px; height: 34px;">
+                        <i data-lucide="user" style="color: #6B7280; width: 18px; height: 18px;"></i>
+                    </div>
+                    <span class="js-student-name" style="font-weight: 700; font-size: 0.88rem;">Student</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Not-yet-linked banner -->
+        <div id="noStudentRecordBanner" hidden class="glass-panel"
+            style="padding: 14px 18px; display: flex; align-items: center; gap: 10px; border-left: 4px solid var(--color-danger);">
+            <i data-lucide="alert-triangle" style="width: 18px; height: 18px; color: var(--color-danger); flex-shrink: 0;"></i>
+            <span>Your account isn't linked to a student record yet, so your borrow history can't be shown. Contact an admin if this doesn't resolve itself.</span>
+        </div>
+
+        <!-- Metrics -->
+        <section class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-icon-box metric-icon-green">
+                    <i data-lucide="check-circle" style="width: 24px; height: 24px;"></i>
+                </div>
+                <div class="metric-data">
+                    <div class="metric-label">Available Equipment</div>
+                    <div class="metric-value" id="metricAvailable">0</div>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-icon-box metric-icon-orange">
+                    <i data-lucide="log-out" style="width: 24px; height: 24px;"></i>
+                </div>
+                <div class="metric-data">
+                    <div class="metric-label">Currently Borrowed by Me</div>
+                    <div class="metric-value" id="metricMyBorrowed">0</div>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-icon-box metric-icon-blue">
+                    <i data-lucide="clipboard-list" style="width: 24px; height: 24px;"></i>
+                </div>
+                <div class="metric-data">
+                    <div class="metric-label">My Total Transactions</div>
+                    <div class="metric-value" id="metricMyHistory">0</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Available Equipment -->
+        <section class="glass-panel">
+            <div class="table-header-bar">
+                <h3 style="font-size: 1rem; font-weight: 800; text-transform: uppercase;">Available Equipment</h3>
+                <div class="search-filter-wrapper">
+                    <div class="search-box">
+                        <i data-lucide="search"></i>
+                        <input type="text" id="equipmentSearchInput" class="table-search-input"
+                            placeholder="Search equipment or category...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="custom-table">
+                    <thead>
+                        <tr>
+                            <th>Equipment Name</th>
+                            <th>Category</th>
+                            <th>Storage Rack</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="availableEquipmentBody">
+                        <tr>
+                            <td colspan="4" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">Loading equipment...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- My Borrow History -->
+        <section class="glass-panel">
+            <div class="table-header-bar">
+                <h3 style="font-size: 1rem; font-weight: 800; text-transform: uppercase;">My Borrow History</h3>
+            </div>
+
+            <div class="table-responsive">
+                <table class="custom-table">
+                    <thead>
+                        <tr>
+                            <th>Equipment</th>
+                            <th>Action</th>
+                            <th>Date &amp; Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="myHistoryBody">
+                        <tr>
+                            <td colspan="3" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">Loading history...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Footer Copyright -->
+        <footer class="app-footer">
+            &copy; 2026 EquipRoom. All rights reserved.
+        </footer>
+    </main>
+</body>
+
+</html>

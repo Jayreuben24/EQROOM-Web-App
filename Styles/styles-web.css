@@ -39,6 +39,69 @@
   --radius-md: 14px;
   --radius-lg: 20px;
   --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Surface overlays -- theme-aware "light glass" tints reused for hover
+     states, table rows, inputs, pagination, etc. so dark mode can flip
+     them all at once instead of patching hardcoded rgba(255,255,255,*)
+     values one by one. */
+  --surface-1: rgba(255, 255, 255, 0.4);
+  --surface-2: rgba(255, 255, 255, 0.5);
+  --surface-3: rgba(255, 255, 255, 0.6);
+  --surface-4: rgba(255, 255, 255, 0.65);
+  --surface-5: rgba(255, 255, 255, 0.7);
+  --surface-6: rgba(255, 255, 255, 0.8);
+  --surface-solid: #FFFFFF;
+  --input-bg: rgba(255, 255, 255, 0.85);
+  --input-bg-disabled: rgba(243, 244, 246, 0.7);
+  --avatar-bg: #E5E7EB;
+  --avatar-ring: #FFFFFF;
+  --modal-bg: rgba(255, 255, 255, 0.94);
+
+  color-scheme: light;
+}
+
+/* ==========================================================================
+   Dark Mode -- toggled by adding data-theme="dark" to <html> (see
+   Scripts/theme.js). Every color above is redefined here so the rest of
+   the stylesheet -- which only ever reads the variables -- repaints
+   automatically with no further overrides needed.
+   ========================================================================== */
+:root[data-theme="dark"] {
+  --color-bg-base: #0B0F17;
+  --color-bg-surface: #131A26;
+
+  --glass-bg: rgba(23, 30, 44, 0.78);
+  --glass-bg-subtle: rgba(23, 30, 44, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-border-subtle: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --glass-shadow-hover: 0 16px 36px rgba(0, 0, 0, 0.55);
+
+  --color-text-primary: #F3F4F6;
+  --color-text-secondary: #9CA3AF;
+  --color-text-muted: #6B7280;
+
+  --color-primary-light: rgba(255, 104, 19, 0.16);
+
+  --color-success-bg: rgba(34, 197, 94, 0.18);
+  --color-danger-bg: rgba(239, 68, 68, 0.2);
+  --color-info-bg: rgba(59, 130, 246, 0.2);
+  --color-warning-bg: rgba(245, 158, 11, 0.2);
+
+  --surface-1: rgba(255, 255, 255, 0.05);
+  --surface-2: rgba(255, 255, 255, 0.06);
+  --surface-3: rgba(255, 255, 255, 0.07);
+  --surface-4: rgba(255, 255, 255, 0.08);
+  --surface-5: rgba(255, 255, 255, 0.08);
+  --surface-6: rgba(255, 255, 255, 0.1);
+  --surface-solid: #1B2333;
+  --input-bg: rgba(13, 18, 28, 0.7);
+  --input-bg-disabled: rgba(255, 255, 255, 0.04);
+  --avatar-bg: #2A3344;
+  --avatar-ring: #1B2333;
+  --modal-bg: rgba(19, 25, 38, 0.96);
+
+  color-scheme: dark;
 }
 
 * {
@@ -336,7 +399,7 @@ body.sidebar-is-minimized .main-content {
 .sidebar-footer {
   padding: 16px;
   border-top: 1px solid var(--glass-border-subtle);
-  background: rgba(255, 255, 255, 0.4);
+  background: var(--surface-1);
 }
 
 .user-profile-chip {
@@ -350,7 +413,7 @@ body.sidebar-is-minimized .main-content {
 }
 
 .user-profile-chip:hover {
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--surface-6);
 }
 
 .user-profile-info {
@@ -363,12 +426,12 @@ body.sidebar-is-minimized .main-content {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: #E5E7EB;
+  background: var(--avatar-bg);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border: 2px solid #FFFFFF;
+  border: 2px solid var(--avatar-ring);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
@@ -491,7 +554,46 @@ body.sidebar-is-minimized .main-content {
 }
 
 .notification-btn:hover {
-  background: #FFFFFF;
+  background: var(--surface-solid);
+}
+
+/* Dark Mode Toggle -- standalone icon-button styling (used on the login
+   page, which has no sidebar). When combined with .nav-link (every other
+   page, as a sidebar nav item) the rule below strips this chrome instead
+   so it visually matches the other nav links, and the existing
+   .sidebar.minimized rules collapse it to an icon automatically. */
+.theme-toggle-btn {
+  position: relative;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  padding: 9px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  box-shadow: var(--glass-shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+  transition: var(--transition);
+}
+
+.theme-toggle-btn:hover {
+  background: var(--surface-solid);
+  color: var(--color-primary);
+}
+
+.nav-link.theme-toggle-btn {
+  background: none;
+  border: none;
+  box-shadow: none;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+}
+
+.nav-link.theme-toggle-btn:hover {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
 }
 
 .notif-badge {
@@ -685,14 +787,14 @@ body.sidebar-is-minimized .main-content {
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--surface-3);
   border: 1px solid var(--glass-border-subtle);
   border-radius: var(--radius-md);
   transition: var(--transition);
 }
 
 .activity-mini-item:hover {
-  background: #FFFFFF;
+  background: var(--surface-solid);
 }
 
 .activity-item-left {
@@ -748,6 +850,13 @@ body.sidebar-is-minimized .main-content {
   transform: rotate(-90deg);
 }
 
+/* Base "empty" ring behind the colored arcs. A CSS stroke here overrides
+   the SVG's own stroke="#f3f4f6" attribute, so the track stays visible
+   against a dark card instead of showing up as a near-white ring. */
+.donut-track {
+  stroke: var(--glass-border-subtle);
+}
+
 .donut-legend {
   display: flex;
   flex-direction: column;
@@ -786,7 +895,7 @@ body.sidebar-is-minimized .main-content {
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface-5);
   border: 1px solid var(--color-primary);
   border-radius: var(--radius-md);
   color: var(--color-primary);
@@ -912,7 +1021,7 @@ body.sidebar-is-minimized .main-content {
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--surface-2);
   border-radius: var(--radius-sm);
 }
 
@@ -977,7 +1086,7 @@ body.sidebar-is-minimized .main-content {
   padding: 9px 14px 9px 36px;
   border-radius: var(--radius-md);
   border: 1px solid var(--glass-border-subtle);
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--input-bg);
   font-size: 0.85rem;
   color: var(--color-text-primary);
   outline: none;
@@ -994,7 +1103,7 @@ body.sidebar-is-minimized .main-content {
   padding: 9px 14px;
   border-radius: var(--radius-md);
   border: 1px solid var(--glass-border-subtle);
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--input-bg);
   font-size: 0.85rem;
   color: var(--color-text-secondary);
   outline: none;
@@ -1026,7 +1135,7 @@ body.sidebar-is-minimized .main-content {
   padding: 14px;
   font-size: 0.85rem;
   color: var(--color-text-primary);
-  border-bottom: 1px solid rgba(229, 231, 235, 0.5);
+  border-bottom: 1px solid var(--glass-border-subtle);
   vertical-align: middle;
 }
 
@@ -1035,7 +1144,7 @@ body.sidebar-is-minimized .main-content {
 }
 
 .custom-table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.65);
+  background: var(--surface-4);
 }
 
 /* Badge States */
@@ -1136,7 +1245,7 @@ body.sidebar-is-minimized .main-content {
   align-items: center;
   justify-content: center;
   border: 1px solid var(--glass-border-subtle);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface-5);
   color: var(--color-text-primary);
   font-size: 0.8rem;
   font-weight: 600;
@@ -1151,7 +1260,7 @@ body.sidebar-is-minimized .main-content {
 }
 
 .page-btn:hover:not(.active) {
-  background: #FFFFFF;
+  background: var(--surface-solid);
 }
 
 /* Copyright Footer */
@@ -1191,6 +1300,72 @@ body.sidebar-is-minimized .main-content {
   }
   .live-datetime {
     display: none;
+  }
+  .top-header {
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
+  .page-title {
+    font-size: 1.25rem;
+  }
+  .header-right {
+    gap: 10px;
+  }
+  .chart-container {
+    flex-direction: column;
+  }
+  .metrics-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+  }
+  .table-header-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .search-filter-wrapper {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .search-box input,
+  .filter-select {
+    width: 100%;
+    min-width: 0;
+  }
+  .table-footer-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .door-action-row {
+    flex-direction: column;
+  }
+}
+
+/* ==========================================================================
+   Small Phones
+   ========================================================================== */
+@media (max-width: 480px) {
+  .main-content {
+    padding: 14px;
+  }
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+  .glass-panel {
+    padding: 16px;
+  }
+  .header-user span {
+    display: none;
+  }
+  .modal-box {
+    padding: 20px 18px 22px;
+  }
+  .brand-text p {
+    display: none;
+  }
+  .btn-primary-action span,
+  .btn-outline span {
+    white-space: nowrap;
   }
 }
 
@@ -1244,7 +1419,7 @@ body.sidebar-is-minimized .main-content {
   font-size: 0.9rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--glass-border-subtle);
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--input-bg);
   color: var(--color-text-primary);
   outline: none;
   transition: var(--transition);
@@ -1264,7 +1439,7 @@ select.form-control {
 
 .form-control:focus {
   border-color: var(--color-primary);
-  background: #FFFFFF;
+  background: var(--surface-solid);
   box-shadow: 0 0 0 3px var(--color-primary-glow);
 }
 
@@ -1273,7 +1448,7 @@ select.form-control {
 }
 
 .form-control:disabled {
-  background: rgba(243, 244, 246, 0.7);
+  background: var(--input-bg-disabled);
   color: var(--color-text-muted);
   cursor: not-allowed;
 }
@@ -1341,6 +1516,67 @@ select.form-control {
 
 .btn-danger:hover {
   background: #dc2626;
+}
+
+/* ===== Modal (Add/Edit Equipment, etc.) ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 17, 20, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal-box {
+  width: 100%;
+  max-width: 460px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--modal-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+  padding: 26px 28px 28px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.modal-header h3 {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--color-text-primary);
+}
+
+.modal-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  display: flex;
+  padding: 4px;
+  border-radius: 8px;
+  transition: var(--transition);
+}
+
+.modal-close-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--color-text-primary);
 }
 
 /* Toggle Switch */
@@ -1501,7 +1737,7 @@ select.form-control {
   justify-content: space-between;
   gap: 14px;
   padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--surface-3);
   border: 1px solid var(--glass-border-subtle);
   border-radius: var(--radius-md);
   text-decoration: none;
@@ -1510,7 +1746,7 @@ select.form-control {
 }
 
 .mini-profile-link:hover {
-  background: #FFFFFF;
+  background: var(--surface-solid);
 }
 
 .mini-profile-left {
@@ -1556,11 +1792,11 @@ select.form-control {
   width: 96px;
   height: 96px;
   border-radius: 50%;
-  background: #E5E7EB;
+  background: var(--avatar-bg);
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 3px solid #FFFFFF;
+  border: 3px solid var(--avatar-ring);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
   overflow: hidden;
 }

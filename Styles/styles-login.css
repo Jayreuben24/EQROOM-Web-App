@@ -34,6 +34,37 @@
   --radius-md: 14px;
   --radius-lg: 24px;
   --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* This was previously unused -- body below had #f8f9fa hardcoded
+     directly instead of reading this variable. Fixed so dark mode (and
+     any future retheme) only has to change it in one place. */
+  --color-bg-base: #F8F9FA;
+  --card-footer-border: rgba(229, 231, 235, 0.6);
+
+  color-scheme: light;
+}
+
+/* ==========================================================================
+   Dark Mode -- toggled by adding data-theme="dark" to <html> (see
+   Scripts/theme.js). The rest of this stylesheet only reads these
+   variables, so it repaints automatically once they're redefined here.
+   ========================================================================== */
+:root[data-theme="dark"] {
+  --color-bg-base: #0B0F17;
+  --glass-bg: rgba(23, 30, 44, 0.78);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+
+  --color-text-primary: #F3F4F6;
+  --color-text-secondary: #9CA3AF;
+  --color-text-muted: #6B7280;
+
+  --color-border: rgba(255, 255, 255, 0.12);
+  --input-bg: rgba(13, 18, 28, 0.7);
+  --input-border: rgba(255, 255, 255, 0.1);
+  --card-footer-border: rgba(255, 255, 255, 0.1);
+
+  color-scheme: dark;
 }
 
 * {
@@ -49,8 +80,8 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background-color: #f8f9fa;
-  background-image: 
+  background-color: var(--color-bg-base);
+  background-image:
     radial-gradient(at 10% 20%, rgba(255, 104, 19, 0.18) 0px, transparent 50%),
     radial-gradient(at 90% 10%, rgba(59, 130, 246, 0.12) 0px, transparent 50%),
     radial-gradient(at 80% 85%, rgba(255, 104, 19, 0.16) 0px, transparent 50%),
@@ -339,9 +370,37 @@ body {
   text-align: center;
   margin-top: 24px;
   padding-top: 18px;
-  border-top: 1px solid rgba(229, 231, 235, 0.6);
+  border-top: 1px solid var(--card-footer-border);
   font-size: 0.875rem;
   color: var(--color-text-secondary);
+}
+
+/* Dark Mode Toggle -- floating icon button, since this page has no
+   sidebar/header to tuck it into. */
+.theme-toggle-btn {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 20;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: var(--radius-md);
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.theme-toggle-btn:hover {
+  color: var(--color-primary);
+  transform: translateY(-1px);
 }
 
 .flip-btn {

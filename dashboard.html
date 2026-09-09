@@ -3,6 +3,9 @@
 
 <head>
     <meta charset="UTF-8">
+    <!-- Applies the saved dark/light choice before first paint, so the page
+         never flashes light-mode then flips to dark. -->
+    <script>(function(){try{var t=localStorage.getItem('coeqroom-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CO-EQROOM - Home Dashboard</title>
     <!-- Fonts -->
@@ -14,14 +17,177 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="Styles/styles-web.css">
     <script src="Scripts/animations.js" defer></script>
+    <script src="Scripts/theme.js" defer></script>
     <script type="module">
-        import { requireAuth, logout } from './Scripts/auth-guard.js';
-        requireAuth();
+        import { requireAdmin, logout } from './Scripts/auth-guard.js';
+        import { supabase } from './Scripts/supabase-config.js';
+
+        await requireAdmin();
 
         document.getElementById('logoutNavLink')?.addEventListener('click', (e) => {
             e.preventDefault();
             logout();
         });
+
+        // ============================================================
+        // HOME DASHBOARD — equipment metrics + donut from `items`, the
+        // recent-activity feed from `transactions`, and the Total Users
+        // count from `profiles`. Kept live via Realtime, same pattern
+        // as inventory.html and activity-logs.html.
+        // ============================================================
+
+        const STUDENT_NAME_FIELDS = ['full_name', 'fullname', 'name', 'student_name', 'first_name'];
+        let studentsById = new Map();
+        let allItems = [];
+        let itemsByQr = new Map();
+
+        function studentDisplayName(studentId) {
+            const s = studentsById.get(studentId);
+            if (s) {
+                for (const field of STUDENT_NAME_FIELDS) {
+                    if (s[field]) return s[field];
+                }
+            }
+            return studentId;
+        }
+
+        function itemDisplayName(itemQr) {
+            return itemsByQr.get(itemQr)?.item_name || itemQr;
+        }
+
+        async function loadStudents() {
+            const { data, error } = await supabase.from('students').select('*');
+            if (error) { console.error('Failed to load students:', error); return; }
+            studentsById = new Map((data || []).map((s) => [s.student_id, s]));
+        }
+
+        // ---- Equipment metrics + donut ----
+        const metricTotalEquipment = document.getElementById('metricTotalEquipment');
+        const metricAvailable = document.getElementById('metricAvailable');
+        const metricBorrowed = document.getElementById('metricBorrowed');
+        const metricMaintenance = document.getElementById('metricMaintenance');
+        const metricTotalUsers = document.getElementById('metricTotalUsers');
+
+        const donutAvailableArc = document.getElementById('donutAvailableArc');
+        const donutBorrowedArc = document.getElementById('donutBorrowedArc');
+        const donutMaintenanceArc = document.getElementById('donutMaintenanceArc');
+        const legendAvailable = document.getElementById('legendAvailable');
+        const legendBorrowed = document.getElementById('legendBorrowed');
+        const legendMaintenance = document.getElementById('legendMaintenance');
+
+        async function loadItems() {
+            const { data, error } = await supabase.from('items').select('*');
+            if (error) { console.error('Failed to load items:', error); return; }
+            allItems = data || [];
+            itemsByQr = new Map(allItems.map((i) => [i.item_qr, i]));
+            renderEquipmentOverview();
+        }
+
+        function renderEquipmentOverview() {
+            const total = allItems.length;
+            const available = allItems.filter((i) => i.status === 'available').length;
+            const borrowed = allItems.filter((i) => i.status === 'borrowed').length;
+            const maintenance = allItems.filter((i) => i.status === 'maintenance').length;
+
+            if (metricTotalEquipment) metricTotalEquipment.textContent = total;
+            if (metricAvailable) metricAvailable.textContent = available;
+            if (metricBorrowed) metricBorrowed.textContent = borrowed;
+            if (metricMaintenance) metricMaintenance.textContent = maintenance;
+
+            const pct = (n) => (total ? Math.round((n / total) * 1000) / 10 : 0);
+            const availablePct = pct(available);
+            const borrowedPct = pct(borrowed);
+            const maintenancePct = pct(maintenance);
+
+            if (donutAvailableArc) {
+                donutAvailableArc.setAttribute('stroke-dasharray', `${availablePct} ${100 - availablePct}`);
+                donutAvailableArc.setAttribute('stroke-dashoffset', '0');
+            }
+            if (donutBorrowedArc) {
+                donutBorrowedArc.setAttribute('stroke-dasharray', `${borrowedPct} ${100 - borrowedPct}`);
+                donutBorrowedArc.setAttribute('stroke-dashoffset', `${-availablePct}`);
+            }
+            if (donutMaintenanceArc) {
+                donutMaintenanceArc.setAttribute('stroke-dasharray', `${maintenancePct} ${100 - maintenancePct}`);
+                donutMaintenanceArc.setAttribute('stroke-dashoffset', `${-(availablePct + borrowedPct)}`);
+            }
+
+            if (legendAvailable) legendAvailable.textContent = `${available} (${availablePct}%)`;
+            if (legendBorrowed) legendBorrowed.textContent = `${borrowed} (${borrowedPct}%)`;
+            if (legendMaintenance) legendMaintenance.textContent = `${maintenance} (${maintenancePct}%)`;
+        }
+
+        async function loadTotalUsers() {
+            const { count, error } = await supabase
+                .from('profiles')
+                .select('*', { count: 'exact', head: true });
+            if (error) { console.error('Failed to load profiles count:', error); return; }
+            if (metricTotalUsers) metricTotalUsers.textContent = count ?? 0;
+        }
+
+        // ---- Recent Activity mini list ----
+        const activityMiniList = document.getElementById('activityMiniList');
+
+        function formatTime(iso) {
+            return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        }
+
+        async function loadRecentActivity() {
+            if (!activityMiniList) return;
+            const { data, error } = await supabase
+                .from('transactions')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(5);
+
+            if (error) { console.error('Failed to load recent activity:', error); return; }
+
+            const rows = data || [];
+            activityMiniList.innerHTML = '';
+
+            if (rows.length === 0) {
+                activityMiniList.innerHTML = `<p style="color: var(--color-text-secondary); padding: 8px 4px;">No activity yet.</p>`;
+                return;
+            }
+
+            for (const tx of rows) {
+                const isBorrow = tx.action === 'borrow';
+                const item = document.createElement('div');
+                item.className = 'activity-mini-item';
+                item.innerHTML = `
+                    <div class="activity-item-left">
+                        <div class="activity-badge ${isBorrow ? 'checkout' : 'returned'}">
+                            <i data-lucide="${isBorrow ? 'external-link' : 'corner-down-left'}" style="width: 16px; height: 16px;"></i>
+                        </div>
+                        <div class="activity-details">
+                            <h5>${isBorrow ? 'Checked-out' : 'Returned'}: ${itemDisplayName(tx.item_qr)}</h5>
+                            <p>${studentDisplayName(tx.student_id)}</p>
+                        </div>
+                    </div>
+                    <span class="activity-time">${formatTime(tx.created_at)}</span>
+                `;
+                activityMiniList.appendChild(item);
+            }
+
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        function subscribeRealtime() {
+            supabase
+                .channel('dashboard-live')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, () => {
+                    loadItems();
+                })
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions' }, () => {
+                    loadRecentActivity();
+                })
+                .subscribe();
+        }
+
+        await loadStudents();
+        await loadItems();
+        await Promise.all([loadTotalUsers(), loadRecentActivity()]);
+        subscribeRealtime();
     </script>
 </head>
 
@@ -67,6 +233,7 @@
                 <i data-lucide="settings"></i>
                 <span>Settings</span>
             </a>
+            
             <a href="login.html" class="nav-link" id="logoutNavLink" style="margin-top: auto;" data-tooltip="Logout">
                 <i data-lucide="log-out"></i>
                 <span>Logout</span>
@@ -134,7 +301,7 @@
                 </div>
                 <div class="metric-data">
                     <div class="metric-label">Total Equipment</div>
-                    <div class="metric-value">128</div>
+                    <div class="metric-value" id="metricTotalEquipment">0</div>
                     <a href="inventory.html" class="metric-link">View all</a>
                 </div>
             </div>
@@ -145,7 +312,7 @@
                 </div>
                 <div class="metric-data">
                     <div class="metric-label">Available</div>
-                    <div class="metric-value">89</div>
+                    <div class="metric-value" id="metricAvailable">0</div>
                     <a href="inventory.html" class="metric-link">View all</a>
                 </div>
             </div>
@@ -156,7 +323,7 @@
                 </div>
                 <div class="metric-data">
                     <div class="metric-label">Borrowed</div>
-                    <div class="metric-value">27</div>
+                    <div class="metric-value" id="metricBorrowed">0</div>
                     <a href="inventory.html" class="metric-link">View all</a>
                 </div>
             </div>
@@ -167,7 +334,7 @@
                 </div>
                 <div class="metric-data">
                     <div class="metric-label">Maintenance</div>
-                    <div class="metric-value">12</div>
+                    <div class="metric-value" id="metricMaintenance">0</div>
                     <a href="inventory.html" class="metric-link">View all</a>
                 </div>
             </div>
@@ -178,7 +345,7 @@
                 </div>
                 <div class="metric-data">
                     <div class="metric-label">Total Users</div>
-                    <div class="metric-value">24</div>
+                    <div class="metric-value" id="metricTotalUsers">0</div>
                     <a href="user-directory.html" class="metric-link">View all</a>
                 </div>
             </div>
@@ -192,71 +359,8 @@
                     <h3>Recent Activity Logs</h3>
                     <a href="activity-logs.html">View all</a>
                 </div>
-                <div class="activity-mini-list">
-                    <div class="activity-mini-item">
-                        <div class="activity-item-left">
-                            <div class="activity-badge access">
-                                <i data-lucide="lock-keyhole-open" style="width: 16px; height: 16px;"></i>
-                            </div>
-                            <div class="activity-details">
-                                <h5>Door Access Granted</h5>
-                                <p>Juan Dela Cruz</p>
-                            </div>
-                        </div>
-                        <span class="activity-time">10:29 AM</span>
-                    </div>
-
-                    <div class="activity-mini-item">
-                        <div class="activity-item-left">
-                            <div class="activity-badge checkout">
-                                <i data-lucide="external-link" style="width: 16px; height: 16px;"></i>
-                            </div>
-                            <div class="activity-details">
-                                <h5>Checked-out: Electric Drill</h5>
-                                <p>Miguel Santos</p>
-                            </div>
-                        </div>
-                        <span class="activity-time">10:20 AM</span>
-                    </div>
-
-                    <div class="activity-mini-item">
-                        <div class="activity-item-left">
-                            <div class="activity-badge checkout">
-                                <i data-lucide="corner-down-left" style="width: 16px; height: 16px;"></i>
-                            </div>
-                            <div class="activity-details">
-                                <h5>Returned: Screwdriver Set</h5>
-                                <p>Ana Reyes</p>
-                            </div>
-                        </div>
-                        <span class="activity-time">09:45 AM</span>
-                    </div>
-
-                    <div class="activity-mini-item">
-                        <div class="activity-item-left">
-                            <div class="activity-badge access">
-                                <i data-lucide="lock-keyhole-open" style="width: 16px; height: 16px;"></i>
-                            </div>
-                            <div class="activity-details">
-                                <h5>Door Access Granted</h5>
-                                <p>Pedro Garcia</p>
-                            </div>
-                        </div>
-                        <span class="activity-time">09:30 AM</span>
-                    </div>
-
-                    <div class="activity-mini-item">
-                        <div class="activity-item-left">
-                            <div class="activity-badge backup">
-                                <i data-lucide="database" style="width: 16px; height: 16px;"></i>
-                            </div>
-                            <div class="activity-details">
-                                <h5>Backup to Google Sheets</h5>
-                                <p>System</p>
-                            </div>
-                        </div>
-                        <span class="activity-time">08:00 AM</span>
-                    </div>
+                <div class="activity-mini-list" id="activityMiniList">
+                    <p style="color: var(--color-text-secondary); padding: 8px 4px;">Loading...</p>
                 </div>
             </div>
 
@@ -268,31 +372,31 @@
                 <div class="chart-container">
                     <!-- Vector Donut Chart -->
                     <svg viewBox="0 0 42 42" class="donut-chart-svg">
-                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#f3f4f6" stroke-width="6.5">
+                        <circle class="donut-track" cx="21" cy="21" r="15.915" fill="transparent" stroke="#f3f4f6" stroke-width="6.5">
                         </circle>
-                        <!-- Available (Green ~69.5%) -->
-                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--color-success)"
-                            stroke-width="6.5" stroke-dasharray="69.5 30.5" stroke-dashoffset="0"></circle>
-                        <!-- Borrowed (Orange ~21.1%) -->
-                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--color-primary)"
-                            stroke-width="6.5" stroke-dasharray="21.1 78.9" stroke-dashoffset="-69.5"></circle>
-                        <!-- Maintenance (Red ~9.4%) -->
-                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--color-danger)"
-                            stroke-width="6.5" stroke-dasharray="9.4 90.6" stroke-dashoffset="-90.6"></circle>
+                        <!-- Available -->
+                        <circle id="donutAvailableArc" cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--color-success)"
+                            stroke-width="6.5" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
+                        <!-- Borrowed -->
+                        <circle id="donutBorrowedArc" cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--color-primary)"
+                            stroke-width="6.5" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
+                        <!-- Maintenance -->
+                        <circle id="donutMaintenanceArc" cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--color-danger)"
+                            stroke-width="6.5" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
                     </svg>
 
                     <div class="donut-legend">
                         <div class="legend-item">
                             <span class="legend-dot available"></span>
-                            <span>Available &nbsp;<strong>89 (69.5%)</strong></span>
+                            <span>Available &nbsp;<strong id="legendAvailable">0 (0%)</strong></span>
                         </div>
                         <div class="legend-item">
                             <span class="legend-dot borrowed"></span>
-                            <span>Borrowed &nbsp;<strong>27 (21.1%)</strong></span>
+                            <span>Borrowed &nbsp;<strong id="legendBorrowed">0 (0%)</strong></span>
                         </div>
                         <div class="legend-item">
                             <span class="legend-dot maintenance"></span>
-                            <span>Maintenance &nbsp;<strong>12 (9.4%)</strong></span>
+                            <span>Maintenance &nbsp;<strong id="legendMaintenance">0 (0%)</strong></span>
                         </div>
                     </div>
                 </div>
