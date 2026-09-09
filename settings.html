@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CO-EQROOM - Home Dashboard</title>
+    <title>CO-EQROOM - Settings</title>
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,8 +15,64 @@
     <link rel="stylesheet" href="Styles/styles-web.css">
     <script src="Scripts/animations.js" defer></script>
     <script type="module">
-        import { requireAuth } from './Scripts/auth-guard.js';
-        requireAuth();
+        import { requireAuth, logout } from './Scripts/auth-guard.js';
+        import { supabase } from './Scripts/supabase-config.js';
+
+        const session = await requireAuth();
+
+        document.getElementById('logoutNavLink')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            logout();
+        });
+
+        // Populate the account email from the active Supabase session
+        const accountEmail = document.getElementById('accountEmail');
+        if (accountEmail && session) {
+            accountEmail.value = session.user.email ?? '';
+        }
+
+        // Change Password
+        const changePasswordForm = document.getElementById('changePasswordForm');
+        if (changePasswordForm) {
+            changePasswordForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const newPassword = document.getElementById('newPassword').value;
+                const confirmNewPassword = document.getElementById('confirmNewPassword').value;
+
+                if (newPassword.length < 8) {
+                    alert('New password must be at least 8 characters.');
+                    return;
+                }
+                if (newPassword !== confirmNewPassword) {
+                    alert('Passwords do not match.');
+                    return;
+                }
+
+                const submitBtn = document.getElementById('changePasswordSubmitBtn');
+                submitBtn.disabled = true;
+                submitBtn.querySelector('span').textContent = 'Updating...';
+
+                const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+                submitBtn.disabled = false;
+                submitBtn.querySelector('span').textContent = 'Update Password';
+
+                if (error) {
+                    alert(error.message);
+                    return;
+                }
+
+                alert('Password updated successfully.');
+                changePasswordForm.reset();
+            });
+        }
+
+        // Sign out of all other devices/sessions
+        document.getElementById('btnSignOutOthers')?.addEventListener('click', async () => {
+            if (!confirm('Sign out of all other active sessions on this account?')) return;
+            const { error } = await supabase.auth.signOut({ scope: 'others' });
+            alert(error ? error.message : 'Signed out of all other sessions.');
+        });
     </script>
 </head>
 
@@ -25,7 +81,7 @@
     <div class="bg-blob bg-blob-1"></div>
     <div class="bg-blob bg-blob-2"></div>
 
-    <!-- Sidebar (Matches sample design) -->
+    <!-- Sidebar -->
     <aside class="sidebar">
         <div class="brand-banner">
             <div class="brand-icon-shield">
@@ -58,17 +114,18 @@
                 <i data-lucide="clipboard-list"></i>
                 <span>Activity Logs</span>
             </a>
-            <a href="settings.html" class="nav-link active" class="nav-link" data-tooltip="Settings">
+            <a href="settings.html" class="nav-link active" data-tooltip="Settings">
                 <i data-lucide="settings"></i>
                 <span>Settings</span>
             </a>
-            <a href="login.html" class="nav-link" style="margin-top: auto;" data-tooltip="Logout">
+            <a href="login.html" class="nav-link" id="logoutNavLink" style="margin-top: auto;" data-tooltip="Logout">
                 <i data-lucide="log-out"></i>
                 <span>Logout</span>
             </a>
         </nav>
+
         <div class="sidebar-footer">
-            <div class="user-profile-chip">
+            <a href="profile.html" class="user-profile-chip">
                 <div class="user-profile-info">
                     <div class="avatar">
                         <i data-lucide="user" style="color: #6B7280; width: 22px; height: 22px;"></i>
@@ -79,10 +136,411 @@
                     </div>
                 </div>
                 <i data-lucide="chevron-down" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
-            </div>
+            </a>
         </div>
     </aside>
 
-    <main>
-        
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Top Header Bar -->
+        <header class="top-header">
+            <div class="header-left">
+                <button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation">
+                    <i data-lucide="menu"></i>
+                </button>
+                <h2 class="page-title">Settings</h2>
+            </div>
+            <div class="header-right">
+                <button class="notification-btn" aria-label="Notifications">
+                    <i data-lucide="bell" style="width: 20px; height: 20px; color: var(--color-text-secondary);"></i>
+                    <span class="notif-badge">3</span>
+                </button>
+                <div class="live-datetime">
+                    <div class="datetime-item">
+                        <i data-lucide="calendar"></i>
+                        <span id="liveDate">May 25, 2026</span>
+                    </div>
+                    <span class="datetime-separator">|</span>
+                    <div class="datetime-item">
+                        <i data-lucide="clock"></i>
+                        <span id="liveTime">10:30 AM</span>
+                    </div>
+                </div>
+                <a href="profile.html" class="header-user" style="text-decoration: none; color: inherit;">
+                    <div class="avatar" style="width: 34px; height: 34px;">
+                        <i data-lucide="user" style="color: #6B7280; width: 18px; height: 18px;"></i>
+                    </div>
+                    <span style="font-weight: 700; font-size: 0.88rem;">Admin</span>
+                    <i data-lucide="chevron-down"
+                        style="width: 14px; height: 14px; color: var(--color-text-muted);"></i>
+                </a>
+            </div>
+        </header>
+
+        <!-- Settings Layout: Side Tabs + Panels -->
+        <div class="settings-layout">
+            <!-- Side Tab Navigation -->
+            <aside class="settings-tabs glass-panel">
+                <button class="settings-tab-link active" data-tab="account">
+                    <i data-lucide="user-cog"></i>
+                    <span>Account &amp; Security</span>
+                </button>
+                <button class="settings-tab-link" data-tab="notifications">
+                    <i data-lucide="bell-ring"></i>
+                    <span>Notifications</span>
+                </button>
+                <button class="settings-tab-link" data-tab="access">
+                    <i data-lucide="door-open"></i>
+                    <span>Access Control</span>
+                </button>
+                <button class="settings-tab-link" data-tab="device">
+                    <i data-lucide="cpu"></i>
+                    <span>Device &amp; Hardware</span>
+                </button>
+                <button class="settings-tab-link" data-tab="backup">
+                    <i data-lucide="cloud-cog"></i>
+                    <span>Backup &amp; Data</span>
+                </button>
+            </aside>
+
+            <!-- Settings Content Panels -->
+            <section class="settings-content">
+
+                <!-- Panel: Account & Security -->
+                <div class="settings-panel glass-panel active" id="panel-account">
+                    <div class="card-title-bar">
+                        <h3>Account &amp; Security</h3>
+                    </div>
+
+                    <a href="profile.html" class="mini-profile-link">
+                        <div class="mini-profile-left">
+                            <div class="avatar" style="width: 42px; height: 42px;">
+                                <i data-lucide="user" style="color: #6B7280; width: 22px; height: 22px;"></i>
+                            </div>
+                            <div>
+                                <h5>Manage your full profile</h5>
+                                <p>Name, role, section &amp; account details</p>
+                            </div>
+                        </div>
+                        <i data-lucide="chevron-right" class="chevron"></i>
+                    </a>
+
+                    <div class="settings-subheading">Login Email</div>
+                    <div class="form-group">
+                        <label for="accountEmail">Email Address</label>
+                        <div class="input-wrapper">
+                            <i data-lucide="mail" class="input-icon"></i>
+                            <input type="email" id="accountEmail" class="form-control" disabled
+                                placeholder="Loading...">
+                        </div>
+                        <span class="form-hint">Contact an administrator to change the email tied to your
+                            account.</span>
+                    </div>
+
+                    <div class="settings-divider"></div>
+
+                    <div class="settings-subheading">Change Password</div>
+                    <form id="changePasswordForm" novalidate>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="newPassword">New Password</label>
+                                <div class="input-wrapper">
+                                    <i data-lucide="lock" class="input-icon"></i>
+                                    <input type="password" id="newPassword" class="form-control"
+                                        placeholder="At least 8 characters" autocomplete="new-password" required>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="confirmNewPassword">Confirm New Password</label>
+                                <div class="input-wrapper">
+                                    <i data-lucide="shield-check" class="input-icon"></i>
+                                    <input type="password" id="confirmNewPassword" class="form-control"
+                                        placeholder="Repeat new password" autocomplete="new-password" required>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary-action" id="changePasswordSubmitBtn">
+                                <i data-lucide="key-round" style="width: 16px; height: 16px;"></i>
+                                <span>Update Password</span>
+                            </button>
+                        </div>
+                    </form>
+
+                    <div class="settings-divider"></div>
+
+                    <div class="settings-subheading">Active Sessions</div>
+                    <p style="font-size: 0.85rem; color: var(--color-text-secondary); margin-bottom: 14px;">
+                        If you signed in on a shared or unfamiliar device, you can end every other active session
+                        for this account.
+                    </p>
+                    <div class="form-actions">
+                        <button type="button" class="btn-outline" id="btnSignOutOthers">
+                            <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
+                            <span>Sign Out of All Other Devices</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Panel: Notifications -->
+                <div class="settings-panel glass-panel" id="panel-notifications">
+                    <div class="card-title-bar">
+                        <h3>Notification Preferences</h3>
+                    </div>
+
+                    <div class="toggle-row">
+                        <div class="toggle-label">
+                            <h5>Door Access Alerts</h5>
+                            <p>Get notified every time the tech room door is unlocked or accessed.</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" data-pref="door-access-alerts" checked>
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="toggle-row">
+                        <div class="toggle-label">
+                            <h5>Overdue Return Reminders</h5>
+                            <p>Alert admins when borrowed equipment passes its expected return time.</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" data-pref="overdue-alerts" checked>
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="toggle-row">
+                        <div class="toggle-label">
+                            <h5>Low Stock Alerts</h5>
+                            <p>Notify when an equipment category is running low on available units.</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" data-pref="low-stock-alerts">
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="toggle-row">
+                        <div class="toggle-label">
+                            <h5>System &amp; Backup Alerts</h5>
+                            <p>Notify when a scheduled cloud backup fails or a device goes offline.</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" data-pref="system-alerts" checked>
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="toggle-row">
+                        <div class="toggle-label">
+                            <h5>Email Notifications</h5>
+                            <p>Also send the alerts above to your registered email address.</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" data-pref="email-notifications">
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Panel: Access Control -->
+                <div class="settings-panel glass-panel" id="panel-access">
+                    <div class="card-title-bar">
+                        <h3>Access Control</h3>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="autoLockTimer">Auto-Lock Timer</label>
+                            <select id="autoLockTimer" class="form-control no-icon">
+                                <option value="5">5 seconds</option>
+                                <option value="10" selected>10 seconds</option>
+                                <option value="15">15 seconds</option>
+                                <option value="30">30 seconds</option>
+                                <option value="60">60 seconds</option>
+                            </select>
+                            <span class="form-hint">How long the door stays unlocked after a Remote Unlock or
+                                verified access.</span>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="doorOpenThreshold">Door-Left-Open Alert</label>
+                            <select id="doorOpenThreshold" class="form-control no-icon">
+                                <option value="1">After 1 minute</option>
+                                <option value="3" selected>After 3 minutes</option>
+                                <option value="5">After 5 minutes</option>
+                                <option value="10">After 10 minutes</option>
+                            </select>
+                            <span class="form-hint">Trigger an alert if the door sensor stays open past this
+                                limit.</span>
+                        </div>
+                    </div>
+
+                    <div class="toggle-row">
+                        <div class="toggle-label">
+                            <h5>Require Confirmation on Remote Unlock</h5>
+                            <p>Show a confirmation prompt before unlocking the door remotely from the dashboard.</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" data-pref="confirm-remote-unlock" checked>
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="toggle-row">
+                        <div class="toggle-label">
+                            <h5>Restrict Access to Registered Biometrics Only</h5>
+                            <p>Block door access attempts from fingerprints not enrolled in the system.</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" data-pref="restrict-biometrics" checked>
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="settings-divider"></div>
+
+                    <div class="settings-subheading">Emergency Contact</div>
+                    <div class="form-group" style="max-width: 380px;">
+                        <label for="emergencyContact">Notify this number on Emergency Lockdown</label>
+                        <div class="input-wrapper">
+                            <i data-lucide="phone" class="input-icon"></i>
+                            <input type="tel" id="emergencyContact" class="form-control"
+                                placeholder="e.g. +63 917 000 0000">
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn-primary-action">
+                            <i data-lucide="save" style="width: 16px; height: 16px;"></i>
+                            <span>Save Access Settings</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Panel: Device & Hardware -->
+                <div class="settings-panel glass-panel" id="panel-device">
+                    <div class="card-title-bar">
+                        <h3>Device &amp; Hardware</h3>
+                    </div>
+
+                    <div class="system-status-list">
+                        <div class="system-status-item">
+                            <div class="status-item-left">
+                                <i data-lucide="cpu"></i>
+                                <span>ESP32 Controller</span>
+                            </div>
+                            <span class="status-pill">Online &bull; 192.168.1.42</span>
+                        </div>
+
+                        <div class="system-status-item">
+                            <div class="status-item-left">
+                                <i data-lucide="scan-line"></i>
+                                <span>Barcode / QR Scanner</span>
+                            </div>
+                            <span class="status-pill">Online</span>
+                        </div>
+
+                        <div class="system-status-item">
+                            <div class="status-item-left">
+                                <i data-lucide="fingerprint"></i>
+                                <span>Biometric Sensor</span>
+                            </div>
+                            <span class="status-pill">Online</span>
+                        </div>
+
+                        <div class="system-status-item">
+                            <div class="status-item-left">
+                                <i data-lucide="tag"></i>
+                                <span>Firmware Version</span>
+                            </div>
+                            <span class="status-pill" style="color: var(--color-text-secondary);">v1.2.0</span>
+                        </div>
+                    </div>
+
+                
+
+                    <div class="settings-subheading">Maintenance</div>
+                    <div class="form-actions" style="flex-wrap: wrap;">
+                        <button type="button" class="btn-outline" id="btnRecalibrateSensor">
+                            <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                            <span>Recalibrate Biometric Sensor</span>
+                        </button>
+                        <button type="button" class="btn-danger" id="btnRestartDevice">
+                            <i data-lucide="power" style="width: 16px; height: 16px;"></i>
+                            <span>Restart ESP32 Device</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Panel: Backup & Data -->
+                <div class="settings-panel glass-panel" id="panel-backup">
+                    <div class="card-title-bar">
+                        <h3>Backup &amp; Data</h3>
+                    </div>
+
+                    <div class="toggle-row">
+                        <div class="toggle-label">
+                            <h5>Automatic Cloud Backup</h5>
+                            <p>Regularly sync inventory, users, and activity logs to Supabase / Google Sheets.</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" data-pref="auto-backup" checked>
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="form-group" style="max-width: 320px; margin-top: 14px;">
+                        <label for="backupFrequency">Backup Frequency</label>
+                        <select id="backupFrequency" class="form-control no-icon">
+                            <option value="6h">Every 6 hours</option>
+                            <option value="daily" selected>Daily</option>
+                            <option value="weekly">Weekly</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-divider"></div>
+
+                    <div class="system-status-list">
+                        <div class="system-status-item">
+                            <div class="status-item-left">
+                                <i data-lucide="database"></i>
+                                <span>Last Backup</span>
+                            </div>
+                            <span class="status-pill" id="lastBackupText">Today, 08:00 AM</span>
+                        </div>
+                        <div class="system-status-item">
+                            <div class="status-item-left">
+                                <i data-lucide="table"></i>
+                                <span>Google Sheets Sync</span>
+                            </div>
+                            <span class="status-pill">Connected</span>
+                        </div>
+                    </div>
+
+                    <div class="settings-divider"></div>
+
+                    <div class="form-actions" style="flex-wrap: wrap;">
+                        <button type="button" class="btn-primary-action" id="btnBackupNow">
+                            <i data-lucide="cloud-upload" style="width: 16px; height: 16px;"></i>
+                            <span>Backup Now</span>
+                        </button>
+                        <button type="button" class="btn-outline" id="btnExportData">
+                            <i data-lucide="download" style="width: 16px; height: 16px;"></i>
+                            <span>Export All Data (CSV)</span>
+                        </button>
+                    </div>
+                </div>
+
+            </section>
+        </div>
+
+        <!-- Footer Copyright -->
+        <footer class="app-footer">
+            &copy; 2026 EquipRoom. All rights reserved.
+        </footer>
     </main>
+</body>
+
+</html>

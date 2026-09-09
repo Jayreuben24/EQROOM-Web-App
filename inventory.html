@@ -15,8 +15,13 @@
     <link rel="stylesheet" href="Styles/styles-web.css">
     <script src="Scripts/animations.js" defer></script>
     <script type="module">
-        import { requireAuth } from './Scripts/auth-guard.js';
+        import { requireAuth, logout } from './Scripts/auth-guard.js';
         requireAuth();
+
+        document.getElementById('logoutNavLink')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            logout();
+        });
     </script>
 </head>
 
@@ -62,14 +67,14 @@
                 <i data-lucide="settings"></i>
                 <span>Settings</span>
             </a>
-            <a href="login.html" class="nav-link" style="margin-top: auto;" data-tooltip="Logout">
+            <a href="login.html" class="nav-link" id="logoutNavLink" style="margin-top: auto;" data-tooltip="Logout">
                 <i data-lucide="log-out"></i>
                 <span>Logout</span>
             </a>
         </nav>
 
         <div class="sidebar-footer">
-            <div class="user-profile-chip">
+            <a href="profile.html" class="user-profile-chip">
                 <div class="user-profile-info">
                     <div class="avatar">
                         <i data-lucide="user" style="color: #6B7280; width: 22px; height: 22px;"></i>
@@ -80,7 +85,7 @@
                     </div>
                 </div>
                 <i data-lucide="chevron-down" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
-            </div>
+            </a>
         </div>
     </aside>
 

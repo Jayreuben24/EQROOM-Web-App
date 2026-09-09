@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CO-EQROOM - My Profile</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="Styles/styles-web.css">
+    <script src="Scripts/animations.js" defer></script>
+    <script type="module">
+        import { requireAuth, logout } from './Scripts/auth-guard.js';
+        import { supabase } from './Scripts/supabase-config.js';
+
+        const session = await requireAuth();
+        const user = session.user;
+
+        document.getElementById('logoutNavLink')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            logout();
+        });
+
+        // Populate identity from the Supabase auth session
+        const fullName = user.user_metadata?.full_name?.trim() || 'Unnamed User';
+        const email = user.email ?? '';
+        const joined = user.created_at
+            ? new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+            : '—';
+
+        document.getElementById('profileFullName').textContent = fullName;
+        document.getElementById('profileEmail').textContent = email;
+        document.getElementById('profileJoined').textContent = joined;
+        document.getElementById('editFullName').value = fullName;
+        document.getElementById('editEmail').value = email;
+
+        // Fetch role from the profiles table (same lookup used by auth-guard's requireRole)
+        try {
+            const { data: profile, error } = await supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', user.id)
+                .single();
+
+            const role = !error && profile?.role ? profile.role : 'User';
+            document.getElementById('profileRole').textContent = role;
+            document.getElementById('profileRoleTag').textContent = role;
+        } catch (err) {
+            document.getElementById('profileRole').textContent = 'User';
+            document.getElementById('profileRoleTag').textContent = 'User';
+        }
+
+        // Update display name (stored on the Supabase auth user, not a custom table,
+        // so this works regardless of your profiles table schema)
+        const personalInfoForm = document.getElementById('personalInfoForm');
+        if (personalInfoForm) {
+            personalInfoForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const newName = document.getElementById('editFullName').value.trim();
+                if (!newName) {
+                    alert('Full name cannot be empty.');
+                    return;
+                }
+
+                const submitBtn = document.getElementById('personalInfoSubmitBtn');
+                submitBtn.disabled = true;
+                submitBtn.querySelector('span').textContent = 'Saving...';
+
+                const { error } = await supabase.auth.updateUser({ data: { full_name: newName } });
+
+                submitBtn.disabled = false;
+                submitBtn.querySelector('span').textContent = 'Save Changes';
+
+                if (error) {
+                    alert(error.message);
+                    return;
+                }
+
+                document.getElementById('profileFullName').textContent = newName;
+                alert('Profile updated successfully.');
+            });
+        }
+    </script>
+</head>
+
+<body>
+    <!-- Decorative background glass orbs -->
+    <div class="bg-blob bg-blob-1"></div>
+    <div class="bg-blob bg-blob-2"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="brand-banner">
+            <div class="brand-icon-shield">
+                <i data-lucide="shield" style="width: 26px; height: 26px;"></i>
+            </div>
+            <div class="brand-text">
+                <h1>CO-EQROOM</h1>
+                <p>IoT-Based Equipment Room<br>Management System</p>
+            </div>
+            <button class="btn-sidebar-collapse" id="sidebarCollapseBtn" aria-label="Toggle sidebar width"
+                title="Minimize Sidebar">
+                <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i>
+            </button>
+        </div>
+
+        <nav class="dashboard-nav">
+            <a href="dashboard.html" class="nav-link" data-tooltip="Home Dashboard">
+                <i data-lucide="home"></i>
+                <span>Home Dashboard</span>
+            </a>
+            <a href="user-directory.html" class="nav-link" data-tooltip="Users and Directory">
+                <i data-lucide="users"></i>
+                <span>Users and Directory</span>
+            </a>
+            <a href="inventory.html" class="nav-link" data-tooltip="Inventory">
+                <i data-lucide="package"></i>
+                <span>Inventory</span>
+            </a>
+            <a href="activity-logs.html" class="nav-link" data-tooltip="Activity Logs">
+                <i data-lucide="clipboard-list"></i>
+                <span>Activity Logs</span>
+            </a>
+            <a href="settings.html" class="nav-link" data-tooltip="Settings">
+                <i data-lucide="settings"></i>
+                <span>Settings</span>
+            </a>
+            <a href="login.html" class="nav-link" id="logoutNavLink" style="margin-top: auto;" data-tooltip="Logout">
+                <i data-lucide="log-out"></i>
+                <span>Logout</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <a href="profile.html" class="user-profile-chip">
+                <div class="user-profile-info">
+                    <div class="avatar">
+                        <i data-lucide="user" style="color: #6B7280; width: 22px; height: 22px;"></i>
+                    </div>
+                    <div class="profile-meta">
+                        <h4>Admin</h4>
+                        <p>System Administrator</p>
+                    </div>
+                </div>
+                <i data-lucide="chevron-down" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Top Header Bar -->
+        <header class="top-header">
+            <div class="header-left">
+                <button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation">
+                    <i data-lucide="menu"></i>
+                </button>
+                <h2 class="page-title">My Profile</h2>
+            </div>
+            <div class="header-right">
+                <button class="notification-btn" aria-label="Notifications">
+                    <i data-lucide="bell" style="width: 20px; height: 20px; color: var(--color-text-secondary);"></i>
+                    <span class="notif-badge">3</span>
+                </button>
+                <div class="live-datetime">
+                    <div class="datetime-item">
+                        <i data-lucide="calendar"></i>
+                        <span id="liveDate">May 25, 2026</span>
+                    </div>
+                    <span class="datetime-separator">|</span>
+                    <div class="datetime-item">
+                        <i data-lucide="clock"></i>
+                        <span id="liveTime">10:30 AM</span>
+                    </div>
+                </div>
+                <div class="header-user">
+                    <div class="avatar" style="width: 34px; height: 34px;">
+                        <i data-lucide="user" style="color: #6B7280; width: 18px; height: 18px;"></i>
+                    </div>
+                    <span style="font-weight: 700; font-size: 0.88rem;">Admin</span>
+                    <i data-lucide="chevron-down"
+                        style="width: 14px; height: 14px; color: var(--color-text-muted);"></i>
+                </div>
+            </div>
+        </header>
+
+        <!-- Profile Header Card -->
+        <section class="glass-panel">
+            <div class="profile-header-card">
+                <div class="profile-avatar-wrap">
+                    <div class="profile-avatar-lg">
+                        <i data-lucide="user" style="color: #9CA3AF; width: 44px; height: 44px;"></i>
+                    </div>
+                    <button class="btn-avatar-edit" id="btnEditAvatar" title="Change photo (coming soon)"
+                        aria-label="Change profile photo">
+                        <i data-lucide="camera" style="width: 15px; height: 15px;"></i>
+                    </button>
+                </div>
+
+                <div class="profile-name-block">
+                    <h2 id="profileFullName">Loading...</h2>
+                    <p id="profileEmail">&nbsp;</p>
+                    <div class="profile-meta-tags">
+                        <span class="status-tag active">
+                            <i data-lucide="shield" style="width: 12px; height: 12px;"></i>
+                            <span id="profileRoleTag">Role</span>
+                        </span>
+                        <span class="status-tag returned">
+                            <i data-lucide="fingerprint" style="width: 12px; height: 12px;"></i>
+                            Biometric Registered
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="profile-detail-grid">
+                <div class="detail-item">
+                    <label>Role</label>
+                    <span id="profileRole">—</span>
+                </div>
+                <div class="detail-item">
+                    <label>Section</label>
+                    <span>—</span>
+                </div>
+                <div class="detail-item">
+                    <label>Member Since</label>
+                    <span id="profileJoined">—</span>
+                </div>
+                <div class="detail-item">
+                    <label>Account Status</label>
+                    <span><i data-lucide="check-circle" style="width: 14px; height: 14px; color: var(--color-success);"></i> Active</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Content Grid: Personal Info + Biometrics / Recent Activity -->
+        <section class="profile-content-grid">
+            <!-- Personal Information -->
+            <div class="glass-panel">
+                <div class="card-title-bar">
+                    <h3>Personal Information</h3>
+                </div>
+
+                <form id="personalInfoForm" novalidate>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="editFullName">Full Name</label>
+                            <div class="input-wrapper">
+                                <i data-lucide="user" class="input-icon"></i>
+                                <input type="text" id="editFullName" class="form-control" placeholder="Loading...">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="editEmail">Email Address</label>
+                            <div class="input-wrapper">
+                                <i data-lucide="mail" class="input-icon"></i>
+                                <input type="email" id="editEmail" class="form-control" disabled
+                                    placeholder="Loading...">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="editPhone">Phone Number</label>
+                            <div class="input-wrapper">
+                                <i data-lucide="phone" class="input-icon"></i>
+                                <input type="tel" id="editPhone" class="form-control"
+                                    placeholder="e.g. +63 917 000 0000">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="editSection">Section</label>
+                            <div class="input-wrapper">
+                                <i data-lucide="layers" class="input-icon"></i>
+                                <input type="text" id="editSection" class="form-control" placeholder="e.g. 3A">
+                            </div>
+                        </div>
+                    </div>
+
+                    <span class="form-hint" style="margin: -8px 0 16px;">Phone and Section are not yet linked to
+                        the database — Full Name updates save immediately.</span>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn-primary-action" id="personalInfoSubmitBtn">
+                            <i data-lucide="save" style="width: 16px; height: 16px;"></i>
+                            <span>Save Changes</span>
+                        </button>
+                        <a href="settings.html" class="btn-outline">
+                            <i data-lucide="lock" style="width: 16px; height: 16px;"></i>
+                            <span>Change Password</span>
+                        </a>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Side Column: Biometrics + Recent Activity -->
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+                <div class="glass-panel">
+                    <div class="card-title-bar">
+                        <h3>Biometric Enrollment</h3>
+                    </div>
+                    <div class="system-status-item" style="background: transparent; padding: 4px 0;">
+                        <div class="status-item-left">
+                            <i data-lucide="fingerprint"></i>
+                            <span>Fingerprint</span>
+                        </div>
+                        <span class="status-pill">Registered</span>
+                    </div>
+                    <div class="form-actions" style="margin-top: 14px;">
+                        <button type="button" class="btn-outline" id="btnReenrollBiometric"
+                            style="width: 100%;" onclick="alert('Please visit the Equipment Room to re-enroll your fingerprint on the biometric scanner.')">
+                            <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                            <span>Re-enroll Fingerprint</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="glass-panel">
+                    <div class="card-title-bar">
+                        <h3>Recent Activity</h3>
+                        <a href="activity-logs.html">View all</a>
+                    </div>
+                    <div class="activity-mini-list">
+                        <div class="activity-mini-item">
+                            <div class="activity-item-left">
+                                <div class="activity-badge access">
+                                    <i data-lucide="log-in" style="width: 16px; height: 16px;"></i>
+                                </div>
+                                <div class="activity-details">
+                                    <h5>Logged in to System</h5>
+                                    <p>Web dashboard</p>
+                                </div>
+                            </div>
+                            <span class="activity-time">Today</span>
+                        </div>
+
+                        <div class="activity-mini-item">
+                            <div class="activity-item-left">
+                                <div class="activity-badge access">
+                                    <i data-lucide="lock-keyhole-open" style="width: 16px; height: 16px;"></i>
+                                </div>
+                                <div class="activity-details">
+                                    <h5>Door Access Granted</h5>
+                                    <p>Biometric authentication</p>
+                                </div>
+                            </div>
+                            <span class="activity-time">Yesterday</span>
+                        </div>
+
+                        <div class="activity-mini-item">
+                            <div class="activity-item-left">
+                                <div class="activity-badge returned">
+                                    <i data-lucide="corner-down-left" style="width: 16px; height: 16px;"></i>
+                                </div>
+                                <div class="activity-details">
+                                    <h5>Returned Equipment</h5>
+                                    <p>Screwdriver Set</p>
+                                </div>
+                            </div>
+                            <span class="activity-time">3 days ago</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer Copyright -->
+        <footer class="app-footer">
+            &copy; 2026 EquipRoom. All rights reserved.
+        </footer>
+    </main>
+</body>
+
+</html>

@@ -20,3 +20,10 @@ export async function requireRole(role) {
   }
   return session
 }
+
+// Ends the current Supabase session and returns the user to the login screen.
+// Used by the "Logout" sidebar link and the "Sign out" actions in Settings.
+export async function logout() {
+  await supabase.auth.signOut()
+  window.location.href = 'login.html'
+}

@@ -247,3 +247,102 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
+/**
+ * settings-and-profile.js
+ * Interactivity scoped to the Settings and Profile pages:
+ * - Settings sidebar tab switching
+ * - Persisted preference toggle switches (notifications, access control, etc.)
+ * - Simulated hardware/backup actions matching the rest of the app's demo interactions
+ */
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. Settings Tab Switching
+    const settingsTabLinks = document.querySelectorAll('.settings-tab-link');
+    if (settingsTabLinks.length) {
+        settingsTabLinks.forEach((tab) => {
+            tab.addEventListener('click', () => {
+                const target = tab.getAttribute('data-tab');
+
+                settingsTabLinks.forEach((t) => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                document.querySelectorAll('.settings-panel').forEach((panel) => {
+                    panel.classList.toggle('active', panel.id === `panel-${target}`);
+                });
+            });
+        });
+    }
+
+    // 2. Persisted Toggle Switches (Notifications & Access Control preferences)
+    document.querySelectorAll('.switch input[data-pref]').forEach((input) => {
+        const key = `eqroom-pref-${input.dataset.pref}`;
+        const saved = localStorage.getItem(key);
+        if (saved !== null) {
+            input.checked = saved === 'true';
+        }
+        input.addEventListener('change', () => {
+            localStorage.setItem(key, input.checked);
+        });
+    });
+
+    // 3. Simulated "Backup Now" action (Backup & Data panel)
+    const btnBackupNow = document.getElementById('btnBackupNow');
+    const lastBackupText = document.getElementById('lastBackupText');
+    if (btnBackupNow) {
+        btnBackupNow.addEventListener('click', () => {
+            btnBackupNow.disabled = true;
+            const originalHTML = btnBackupNow.innerHTML;
+            btnBackupNow.innerHTML = '<i data-lucide="loader-circle" class="spin" style="width: 18px; height: 18px;"></i><span>Backing up...</span>';
+            if (window.lucide) window.lucide.createIcons();
+
+            setTimeout(() => {
+                btnBackupNow.disabled = false;
+                btnBackupNow.innerHTML = originalHTML;
+                if (window.lucide) window.lucide.createIcons();
+                if (lastBackupText) lastBackupText.textContent = 'Just now';
+            }, 1500);
+        });
+    }
+
+    // 4. Simulated device actions (Recalibrate sensor / Restart device)
+    const btnRecalibrate = document.getElementById('btnRecalibrateSensor');
+    if (btnRecalibrate) {
+        btnRecalibrate.addEventListener('click', () => {
+            btnRecalibrate.disabled = true;
+            const original = btnRecalibrate.innerHTML;
+            btnRecalibrate.innerHTML = '<i data-lucide="loader-circle" class="spin" style="width: 16px; height: 16px;"></i><span>Calibrating...</span>';
+            if (window.lucide) window.lucide.createIcons();
+            setTimeout(() => {
+                btnRecalibrate.disabled = false;
+                btnRecalibrate.innerHTML = original;
+                if (window.lucide) window.lucide.createIcons();
+                alert('Biometric sensor recalibrated successfully.');
+            }, 1200);
+        });
+    }
+
+    const btnRestartDevice = document.getElementById('btnRestartDevice');
+    if (btnRestartDevice) {
+        btnRestartDevice.addEventListener('click', () => {
+            if (!confirm('Restart the ESP32 device now? The door lock and sensors will be briefly unavailable.')) return;
+            btnRestartDevice.disabled = true;
+            const original = btnRestartDevice.innerHTML;
+            btnRestartDevice.innerHTML = '<i data-lucide="loader-circle" class="spin" style="width: 16px; height: 16px;"></i><span>Restarting...</span>';
+            if (window.lucide) window.lucide.createIcons();
+            setTimeout(() => {
+                btnRestartDevice.disabled = false;
+                btnRestartDevice.innerHTML = original;
+                if (window.lucide) window.lucide.createIcons();
+                alert('ESP32 device restarted and reconnected.');
+            }, 2000);
+        });
+    }
+
+    // 5. Export data placeholder action
+    const btnExportData = document.getElementById('btnExportData');
+    if (btnExportData) {
+        btnExportData.addEventListener('click', () => {
+            alert('Preparing export... this will download a CSV of all inventory, users, and activity log data once connected to the live database.');
+        });
+    }
+});
