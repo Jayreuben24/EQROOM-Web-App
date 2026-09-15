@@ -1891,6 +1891,23 @@ select.form-control {
   align-items: start;
 }
 
+.header-user a {
+  display: inline-block;
+  padding: 0.6rem 1.2rem;
+  background-color: var(--color-primary);
+  color: #ffffff;
+  border-radius: 0.375rem;
+  text-decoration: none;
+  font-weight: 600;
+  transition: background-color 0.2s, transform 0.1s;
+}
+.header-user a:hover {
+  background-color: var(--color-primary-hover);
+}
+.header-user a:active {
+  transform: scale(0.98);
+}
+
 /* ==========================================================================
    Responsive: Settings & Profile
    ========================================================================== */
