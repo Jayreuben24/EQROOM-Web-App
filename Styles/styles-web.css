@@ -457,6 +457,7 @@ body.sidebar-is-minimized .main-content {
    ========================================================================= */
 .main-content {
   flex: 1;
+  min-width: 0;
   margin-left: var(--sidebar-width);
   padding: 24px 32px;
   min-height: 100vh;
@@ -631,11 +632,29 @@ body.sidebar-is-minimized .main-content {
   box-shadow: var(--glass-shadow);
   border-radius: var(--radius-lg);
   padding: 24px;
+  min-width: 0;
   transition: var(--transition);
 }
 
 .glass-panel:hover {
   box-shadow: var(--glass-shadow-hover);
+}
+
+/* Metrics row paired with a primary action button (Add Equipment / Export
+   Logs / Add User) -- used on the Inventory, Activity Logs, and Users &
+   Directory pages. On narrow screens this stacks into two full-width
+   rows instead of the button floating vertically centered beside a tall
+   multi-row metrics grid (see the mobile override below). */
+.metrics-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.metrics-action-row .metrics-grid {
+  flex: 1;
 }
 
 /* Metrics Row */
@@ -1110,9 +1129,41 @@ body.sidebar-is-minimized .main-content {
   cursor: pointer;
 }
 
+/* Table horizontal-scroll wrapper. .table-responsive is the actual
+   scrolling element; .table-scroll-wrap sits around it (non-scrolling)
+   so the edge fade below can stay pinned to the right edge instead of
+   sliding away with the table content. The table itself carries an
+   inline min-width (set per table in the markup, sized to its column
+   count) so it forces genuine horizontal scrolling on narrow screens
+   instead of squeezing its columns unreadable -- on desktop/tablet the
+   container is already wider than that floor, so it has no effect. */
+.table-scroll-wrap {
+  position: relative;
+}
+
+.table-scroll-hint {
+  display: none;
+}
+
 .table-responsive {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-responsive::-webkit-scrollbar {
+  height: 6px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+  background: var(--glass-border-subtle);
+  border-radius: 999px;
 }
 
 .custom-table {
@@ -1284,16 +1335,181 @@ body.sidebar-is-minimized .main-content {
   }
 }
 
-@media (max-width: 768px) {
+/* ==========================================================================
+   Tablets -- the sidebar auto-collapses to an icon rail so tables and
+   metric cards get more room. This is purely viewport-driven (targets the
+   bare .sidebar, not .sidebar.minimized), so it applies immediately on
+   resize/rotation regardless of the user's manual desktop minimize
+   preference.
+   ========================================================================== */
+@media (max-width: 1024px) and (min-width: 769px) {
   .sidebar {
-    transform: translateX(-100%);
+    width: var(--sidebar-collapsed-width);
   }
-  .sidebar.open {
-    transform: translateX(0);
+  .sidebar .brand-banner {
+    padding: 18px 14px;
+    justify-content: center;
+  }
+  .sidebar .brand-text {
+    display: none;
+  }
+  .sidebar .brand-icon-shield {
+    margin: 0 auto;
+  }
+  .sidebar .btn-sidebar-collapse {
+    display: none;
+  }
+  .sidebar .dashboard-nav {
+    padding: 18px 10px;
+    align-items: center;
+  }
+  .sidebar .nav-link {
+    padding: 12px;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    position: relative;
+  }
+  .sidebar .nav-link span {
+    display: none;
+  }
+  .sidebar .nav-link:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 60px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #1F2937;
+    color: #FFFFFF;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 150;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+  .sidebar .sidebar-footer {
+    padding: 12px 8px;
+  }
+  .sidebar .user-profile-chip {
+    justify-content: center;
+    padding: 6px;
+  }
+  .sidebar .profile-meta,
+  .sidebar .user-profile-chip > i,
+  .sidebar .user-profile-chip > svg {
+    display: none;
+  }
+  .main-content {
+    margin-left: var(--sidebar-collapsed-width);
+  }
+}
+
+/* ==========================================================================
+   Phones -- the sidebar becomes a top bar instead of a side drawer: just
+   the brand row by default, expanding into a full-width dropdown (the
+   same nav markup, laid out as a normal vertical list) when the header's
+   hamburger button toggles the existing .open class -- no new JS needed,
+   animations.js already wires #menuToggle to that class. Every rule here
+   also targets .sidebar.minimized, since the icon-rail "minimized"
+   concept from the desktop toggle doesn't apply once the sidebar is a
+   top bar (this only matters if a window is resized down live without a
+   reload; the toggle itself is already hidden below).
+   ========================================================================== */
+@media (max-width: 768px) {
+  .sidebar,
+  .sidebar.minimized {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: auto;
+    width: 100%;
+    height: 64px;
+    min-height: 0;
+    overflow: hidden;
+    border-right: none;
+    border-bottom: 1px solid var(--glass-border);
+    transform: none;
+  }
+  .sidebar.open,
+  .sidebar.minimized.open {
+    height: auto;
+    max-height: 100vh;
+    overflow-y: auto;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.18);
+  }
+  .sidebar .brand-banner,
+  .sidebar.minimized .brand-banner {
+    padding: 14px 16px;
+    justify-content: flex-start;
+  }
+  .sidebar .brand-icon-shield,
+  .sidebar.minimized .brand-icon-shield {
+    width: 36px;
+    height: 36px;
+    margin: 0;
+  }
+  .sidebar .brand-text,
+  .sidebar.minimized .brand-text {
+    display: block;
+  }
+  .brand-text p {
+    display: none;
+  }
+  .sidebar .btn-sidebar-collapse {
+    display: none;
+  }
+  .sidebar .dashboard-nav,
+  .sidebar.minimized .dashboard-nav {
+    display: none;
+    padding: 10px;
+    align-items: stretch;
+    flex: none;
+  }
+  .sidebar.open .dashboard-nav {
+    display: flex;
+  }
+  .sidebar .nav-link,
+  .sidebar.minimized .nav-link {
+    justify-content: flex-start;
+    width: auto;
+    height: auto;
+    padding: 12px 16px;
+  }
+  .sidebar .nav-link span,
+  .sidebar.minimized .nav-link span {
+    display: inline;
+  }
+  .sidebar .nav-link:hover::after,
+  .sidebar.minimized .nav-link:hover::after {
+    content: none;
+  }
+  .sidebar .sidebar-footer,
+  .sidebar.minimized .sidebar-footer {
+    display: none;
+    padding: 16px;
+  }
+  .sidebar.open .sidebar-footer {
+    display: block;
+  }
+  .sidebar .user-profile-chip,
+  .sidebar.minimized .user-profile-chip {
+    justify-content: space-between;
+    padding: 8px 10px;
+  }
+  .sidebar .profile-meta,
+  .sidebar.minimized .profile-meta,
+  .sidebar .user-profile-chip > i,
+  .sidebar .user-profile-chip > svg {
+    display: revert;
   }
   .main-content {
     margin-left: 0;
     padding: 16px;
+    padding-top: 80px;
   }
   .menu-toggle {
     display: block;
@@ -1318,6 +1534,18 @@ body.sidebar-is-minimized .main-content {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 12px;
   }
+  .metrics-action-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .metrics-action-row .metrics-grid {
+    flex: none;
+    width: 100%;
+  }
+  .metrics-action-row .btn-primary-action {
+    width: 100%;
+    justify-content: center;
+  }
   .table-header-bar {
     flex-direction: column;
     align-items: stretch;
@@ -1339,6 +1567,55 @@ body.sidebar-is-minimized .main-content {
   .door-action-row {
     flex-direction: column;
   }
+
+  /* Horizontal-scroll affordance for wide tables (see .table-scroll-wrap
+     above): a right-edge fade that hints there's more to the right, and
+     a "swipe to see more columns" caption underneath. Both only appear
+     when Scripts/animations.js has measured real overflow on that table
+     (.has-scroll), and the fade fades itself out once the user has
+     scrolled all the way to the last column (.at-end). */
+  .table-scroll-wrap.has-scroll::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 30px;
+    background: linear-gradient(to right, transparent, var(--surface-solid));
+    opacity: 1;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  }
+
+  .table-scroll-wrap.has-scroll.at-end::after {
+    opacity: 0;
+  }
+
+  .table-scroll-wrap.has-scroll .table-scroll-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 8px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+  }
+
+  .table-scroll-hint i,
+  .table-scroll-hint svg {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    color: var(--color-primary);
+    animation: tableScrollHintNudge 1.6s ease-in-out infinite;
+  }
+
+  @keyframes tableScrollHintNudge {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(3px); }
+  }
 }
 
 /* ==========================================================================
@@ -1347,6 +1624,7 @@ body.sidebar-is-minimized .main-content {
 @media (max-width: 480px) {
   .main-content {
     padding: 14px;
+    padding-top: 80px;
   }
   .metrics-grid {
     grid-template-columns: 1fr;

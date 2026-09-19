@@ -470,9 +470,8 @@
         </header>
 
         <!-- Inventory Metrics Grid -->
-        <section
-            style="display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;">
-            <div class="metrics-grid" style="flex: 1;">
+        <section class="metrics-action-row">
+            <div class="metrics-grid">
                 <div class="metric-card">
                     <div class="metric-icon-box metric-icon-orange">
                         <i data-lucide="box" style="width: 24px; height: 24px;"></i>
@@ -539,25 +538,31 @@
                 </div>
             </div>
 
-            <div class="table-responsive">
-                <table class="custom-table">
-                    <thead>
-                        <tr>
-                            <th>Asset ID</th>
-                            <th>Equipment Name</th>
-                            <th>Category</th>
-                            <th>Storage Rack</th>
-                            <th>Last Borrowed By</th>
-                            <th>Status</th>
-                            <th style="text-align: center;">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="inventoryTableBody">
-                        <tr>
-                            <td colspan="7" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">Loading inventory...</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="table-scroll-wrap">
+                <div class="table-responsive">
+                    <table class="custom-table" style="min-width: 780px;">
+                        <thead>
+                            <tr>
+                                <th>Asset ID</th>
+                                <th>Equipment Name</th>
+                                <th>Category</th>
+                                <th>Storage Rack</th>
+                                <th>Last Borrowed By</th>
+                                <th>Status</th>
+                                <th style="text-align: center;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventoryTableBody">
+                            <tr>
+                                <td colspan="7" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">Loading inventory...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="table-scroll-hint">
+                    <i data-lucide="move-horizontal"></i>
+                    <span>Swipe to see more columns</span>
+                </div>
             </div>
 
             <div class="table-footer-bar">

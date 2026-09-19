@@ -103,8 +103,14 @@
             sidebarPrefInput.addEventListener('change', () => {
                 const minimized = sidebarPrefInput.checked;
                 localStorage.setItem('sidebar-minimized', minimized);
-                document.querySelector('.sidebar')?.classList.toggle('minimized', minimized);
-                document.body.classList.toggle('sidebar-is-minimized', minimized);
+                // Only apply it live on desktop widths -- tablets/phones
+                // use their own auto layout (icon rail / top bar) and
+                // ignore .minimized entirely, so flipping this switch on
+                // a narrow screen just saves the preference for later.
+                if (window.innerWidth > 1024) {
+                    document.querySelector('.sidebar')?.classList.toggle('minimized', minimized);
+                    document.body.classList.toggle('sidebar-is-minimized', minimized);
+                }
                 if (window.lucide) window.lucide.createIcons();
             });
         }

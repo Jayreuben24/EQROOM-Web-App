@@ -72,7 +72,7 @@
                             <input type="checkbox" name="remember" id="rememberMe">
                             <span>Remember me</span>
                         </label>
-                        <a href="#forgot-password" class="forgot-link">Forgot password?</a>
+                        <button type="button" class="forgot-link" id="forgotPasswordLink">Forgot password?</button>
                     </div>
 
                     <button type="submit" class="btn-primary" id="loginSubmitBtn">
@@ -161,6 +161,36 @@
             </section>
         </div>
     </main>
+
+    <!-- Forgot Password Modal -->
+    <div class="modal-overlay" id="forgotPasswordOverlay" hidden>
+        <div class="modal-box">
+            <button type="button" class="modal-close-btn" id="forgotPasswordCloseBtn" aria-label="Close">
+                <i data-lucide="x" style="width: 18px; height: 18px;"></i>
+            </button>
+            <div class="card-header">
+                <h2 style="font-size: 1.3rem;">Reset Your Password</h2>
+                <p>Enter the email on your account and we'll email you a link to set a new password.</p>
+            </div>
+
+            <div id="forgotPasswordStatus"></div>
+
+            <form id="forgotPasswordForm" novalidate>
+                <div class="form-group">
+                    <label for="forgot-email">Email</label>
+                    <div class="input-wrapper">
+                        <i data-lucide="mail" class="input-icon"></i>
+                        <input type="email" id="forgot-email" class="form-control" placeholder="you@email.com"
+                            autocomplete="email" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn-primary" id="forgotPasswordSubmitBtn">
+                    <span>Send Reset Link</span>
+                    <i data-lucide="send" style="width: 16px; height: 16px;"></i>
+                </button>
+            </form>
+        </div>
+    </div>
 
     <!-- UI & Animation Logic -->
     <script src="Scripts/animations.js"></script>

@@ -44,8 +44,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const sidebar = document.querySelector('.sidebar');
     const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
 
+    // The icon-rail "minimized" sidebar is a desktop-only concept -- on
+    // tablets and phones the sidebar already auto-collapses (tablet) or
+    // becomes a top bar (phone) purely via CSS, so restoring/toggling
+    // .minimized down there would only fight those layouts.
+    const isDesktopWidth = () => window.innerWidth > 1024;
+
     // Restore saved minimized state
-    if (localStorage.getItem('sidebar-minimized') === 'true' && sidebar) {
+    if (isDesktopWidth() && localStorage.getItem('sidebar-minimized') === 'true' && sidebar) {
         sidebar.classList.add('minimized');
         document.body.classList.add('sidebar-is-minimized');
     }
@@ -53,6 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (sidebarCollapseBtn && sidebar) {
         sidebarCollapseBtn.addEventListener('click', (e) => {
             e.stopPropagation();
+            if (!isDesktopWidth()) return; // the button is hidden below this width anyway
             sidebar.classList.toggle('minimized');
             const isMinimized = sidebar.classList.contains('minimized');
             document.body.classList.toggle('sidebar-is-minimized', isMinimized);
@@ -146,6 +153,42 @@ document.addEventListener('DOMContentLoaded', () => {
             card.style.opacity = '1';
             card.style.transform = 'translateY(0)';
         }, 60 * idx);
+    });
+
+    // 7. Table Horizontal-Scroll Affordance (mobile)
+    // Each wide table sits inside a <div class="table-scroll-wrap"> that
+    // wraps the actual scrolling <div class="table-responsive">. This
+    // watches whether the table genuinely overflows its wrapper and, if
+    // so, toggles a couple of CSS hooks (styles-web.css handles the look):
+    //   .has-scroll  -- the table doesn't fit; show the fade + hint
+    //   .at-end      -- user has scrolled to the last column; hide the fade
+    // Table bodies are populated asynchronously from Supabase after page
+    // load, so this re-measures whenever a table's rows change, not just once.
+    const tableScrollWraps = document.querySelectorAll('.table-scroll-wrap');
+    tableScrollWraps.forEach((wrap) => {
+        const scroller = wrap.querySelector('.table-responsive');
+        if (!scroller) return;
+
+        const update = () => {
+            const scrollable = scroller.scrollWidth > scroller.clientWidth + 2;
+            wrap.classList.toggle('has-scroll', scrollable);
+            const atEnd = scroller.scrollLeft + scroller.clientWidth >= scroller.scrollWidth - 2;
+            wrap.classList.toggle('at-end', !scrollable || atEnd);
+        };
+
+        scroller.addEventListener('scroll', update, { passive: true });
+        window.addEventListener('resize', update);
+
+        const tbody = scroller.querySelector('tbody');
+        if (tbody && window.MutationObserver) {
+            new MutationObserver(update).observe(tbody, { childList: true, subtree: true });
+        }
+
+        update();
+        // Re-check shortly after: icon hydration / async data / font
+        // loading can all shift column widths right after first paint.
+        setTimeout(update, 400);
+        setTimeout(update, 1200);
     });
 });
 
