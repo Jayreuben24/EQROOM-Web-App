@@ -181,11 +181,20 @@ forgotPasswordForm?.addEventListener('submit', async (e) => {
 
   forgotPasswordSubmitBtn.disabled = true;
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    // Wherever this page happens to be served from right now (localhost,
-    // an ngrok tunnel, or a real deploy) -- that exact origin must also be
-    // added to Supabase's Authentication > URL Configuration > Redirect
-    // URLs allow list, or Supabase will refuse/ignore this redirectTo.
-    redirectTo: `${window.location.origin}/reset-password.html`
+    // IMPORTANT: this can't just be `${origin}/reset-password.html` --
+    // window.location.origin is only the protocol+host (e.g.
+    // https://jayreuben24.github.io), which drops the "/EQROOM-Web-App/"
+    // part of the URL on a GitHub Pages *project* site (as opposed to a
+    // user/org site at the domain root). That mismatch sent the email
+    // link to a 404. Building off pathname instead keeps this correct
+    // wherever the page is served from -- localhost, an ngrok tunnel, or
+    // this GitHub Pages subpath -- since it reuses whatever folder this
+    // page itself is already running from.
+    //
+    // Whatever this resolves to must also be added, exactly, to
+    // Supabase's Authentication > URL Configuration > Redirect URLs
+    // allow list, or Supabase will refuse/ignore this redirectTo.
+    redirectTo: `${window.location.origin}${window.location.pathname.replace(/[^/]*$/, '')}reset-password.html`
   });
 
   if (error) {
