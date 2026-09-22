@@ -26,7 +26,7 @@ function goToLoginWithEmail(email) {
   if (goToLoginBtn) {
     goToLoginBtn.click();
   } else {
-    window.location.href = 'login.html';
+    window.location.href = 'index.html';
   }
   const usernameInput = document.getElementById('username');
   if (usernameInput && email) {

@@ -84,13 +84,13 @@ form?.addEventListener('submit', async (e) => {
     }
 
     // Sign out of this one-off recovery session so the next visit to
-    // login.html properly asks for the new password, instead of the
+    // index.html properly asks for the new password, instead of the
     // browser silently carrying an already-authenticated session.
     await supabase.auth.signOut();
 
     showStatus('success', 'Your password has been updated. Redirecting to login...');
     disableForm(true);
     setTimeout(() => {
-        window.location.href = 'login.html';
+        window.location.href = 'index.html';
     }, 1800);
 });

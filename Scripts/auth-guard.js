@@ -3,7 +3,7 @@ import { supabase } from './supabase-config.js'
 
 export async function requireAuth() {
   const { data: { session } } = await supabase.auth.getSession()
-  if (!session) window.location.href = 'login.html'
+  if (!session) window.location.href = 'index.html'
   return session
 }
 
@@ -16,7 +16,7 @@ export async function requireRole(role) {
     .single()
 
   if (profile.role !== role) {
-    window.location.href = 'login.html'
+    window.location.href = 'index.html'
   }
   return session
 }
@@ -62,5 +62,5 @@ export async function requireStudent() {
 // Used by the "Logout" sidebar link and the "Sign out" actions in Settings.
 export async function logout() {
   await supabase.auth.signOut()
-  window.location.href = 'login.html'
+  window.location.href = 'index.html'
 }
