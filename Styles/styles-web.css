@@ -1028,6 +1028,27 @@ body.sidebar-is-minimized .main-content {
   background: #dc2626;
 }
 
+.lock-big-circle.unlocked {
+  border-color: var(--color-success);
+  color: var(--color-success);
+  background: var(--color-success-bg);
+  box-shadow: 0 0 24px rgba(34, 197, 94, 0.35);
+}
+
+.lock-big-circle.offline {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  box-shadow: 0 0 24px rgba(239, 68, 68, 0.3);
+}
+
+.btn-unlock-outline:disabled,
+.btn-emergency-lock:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 /* System Status List */
 .system-status-list {
   display: flex;

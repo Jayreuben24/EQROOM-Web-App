@@ -184,10 +184,122 @@
                 .subscribe();
         }
 
+        // ============================================================
+        // ROOM ACCESS STATUS — door striker + relay, controlled by a
+        // dedicated ESP32 (fingerprint sensor on the door itself, plus
+        // remote unlock/lock from here). The ESP32 is the source of
+        // truth: this panel only sends a *request*; is_locked only
+        // flips once the ESP32 confirms it actually happened.
+        // ============================================================
+
+        const doorStatusCircle = document.getElementById('doorStatusCircle');
+        const doorStatusTitle = document.getElementById('doorStatusTitle');
+        const doorStatusSub = document.getElementById('doorStatusSub');
+        const doorLastAccess = document.getElementById('doorLastAccess');
+        const btnRemoteUnlock = document.getElementById('btnRemoteUnlock');
+        const btnEmergencyLock = document.getElementById('btnEmergencyLock');
+
+        const DOOR_COMMAND_TIMEOUT_MS = 10000; // no ESP32 confirmation by then => assume it's offline
+        let doorCommandWatchdog = null;
+
+        function renderDoorStatus(row) {
+            if (!row || !doorStatusCircle) return;
+
+            doorStatusCircle.classList.remove('unlocked', 'offline');
+
+            if (doorLastAccess) {
+                if (row.last_unlocked_by && row.last_unlocked_at) {
+                    const when = new Date(row.last_unlocked_at).toLocaleString('en-US', {
+                        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
+                    });
+                    doorLastAccess.innerHTML = `Last Access: <strong>${row.last_unlocked_by}</strong> &bull; ${when}`;
+                } else {
+                    doorLastAccess.innerHTML = `Last Access: <strong>—</strong>`;
+                }
+            }
+
+            const pending = !!row.command;
+
+            if (pending) {
+                if (doorStatusTitle) doorStatusTitle.textContent = row.command === 'unlock' ? 'UNLOCKING…' : 'LOCKING…';
+                if (doorStatusSub) doorStatusSub.textContent = 'Waiting for door controller…';
+                if (btnRemoteUnlock) btnRemoteUnlock.disabled = true;
+                return;
+            }
+
+            if (!row.is_locked) {
+                doorStatusCircle.classList.add('unlocked');
+                if (doorStatusTitle) doorStatusTitle.textContent = 'DOOR UNLOCKED';
+                if (doorStatusSub) doorStatusSub.textContent = 'Open';
+                if (btnRemoteUnlock) btnRemoteUnlock.disabled = true;
+            } else {
+                if (doorStatusTitle) doorStatusTitle.textContent = 'DOOR LOCKED';
+                if (doorStatusSub) doorStatusSub.textContent = 'Secure';
+                if (btnRemoteUnlock) btnRemoteUnlock.disabled = false;
+            }
+        }
+
+        async function loadDoorStatus() {
+            const { data, error } = await supabase.from('door_control').select('*').eq('id', 1).single();
+            if (error) { console.error('Failed to load door status:', error); return; }
+            renderDoorStatus(data);
+        }
+
+        function armDoorWatchdog() {
+            clearTimeout(doorCommandWatchdog);
+            doorCommandWatchdog = setTimeout(() => {
+                if (doorStatusCircle) doorStatusCircle.classList.add('offline');
+                if (doorStatusTitle) doorStatusTitle.textContent = 'CONTROLLER OFFLINE';
+                if (doorStatusSub) doorStatusSub.textContent = 'No response from the door ESP32';
+                if (btnRemoteUnlock) btnRemoteUnlock.disabled = false;
+            }, DOOR_COMMAND_TIMEOUT_MS);
+        }
+
+        async function requestDoorUnlock() {
+            if (!btnRemoteUnlock) return;
+            btnRemoteUnlock.disabled = true;
+            const { data: { user } } = await supabase.auth.getUser();
+            const label = user?.email || 'Admin';
+            const { error } = await supabase.rpc('request_door_unlock', { p_requested_by: label });
+            if (error) {
+                console.error('Failed to request unlock:', error);
+                alert('Could not send the unlock command. Check your connection and try again.');
+                btnRemoteUnlock.disabled = false;
+                return;
+            }
+            armDoorWatchdog();
+        }
+
+        async function requestDoorLock() {
+            const { data: { user } } = await supabase.auth.getUser();
+            const label = user?.email || 'Admin';
+            const { error } = await supabase.rpc('request_door_lock', { p_requested_by: label });
+            if (error) {
+                console.error('Failed to request lock:', error);
+                alert('Could not send the lock command. Check your connection and try again.');
+                return;
+            }
+            armDoorWatchdog();
+        }
+
+        function subscribeDoorRealtime() {
+            supabase
+                .channel('door-control-live')
+                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'door_control' }, (payload) => {
+                    clearTimeout(doorCommandWatchdog);
+                    renderDoorStatus(payload.new);
+                })
+                .subscribe();
+        }
+
+        btnRemoteUnlock?.addEventListener('click', requestDoorUnlock);
+        btnEmergencyLock?.addEventListener('click', requestDoorLock);
+
         await loadStudents();
         await loadItems();
-        await Promise.all([loadTotalUsers(), loadRecentActivity()]);
+        await Promise.all([loadTotalUsers(), loadRecentActivity(), loadDoorStatus()]);
         subscribeRealtime();
+        subscribeDoorRealtime();
     </script>
 </head>
 
@@ -437,7 +549,7 @@
                     </div>
                     <h4 class="door-status-title" id="doorStatusTitle">DOOR LOCKED</h4>
                     <p class="door-status-sub" id="doorStatusSub">Secure</p>
-                    <p class="door-last-access">Last Access: <strong>Juan Dela Cruz</strong> &bull; Today, 08:35 AM</p>
+                    <p class="door-last-access" id="doorLastAccess">Last Access: <strong>—</strong></p>
 
                     <div class="door-action-row">
                         <button class="btn-unlock-outline" id="btnRemoteUnlock">
