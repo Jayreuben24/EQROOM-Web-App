@@ -185,6 +185,58 @@
                 .subscribe();
         }
 
+        // ---- Export CSV ----
+        // This button previously had no click handler at all -- clicking it
+        // did nothing. Wired here the same way Settings' "Export Data" does
+        // it (client-side CSV, no server round-trip), but using the rows
+        // already loaded into `allTransactions` with their display names
+        // resolved, so the export matches what's actually shown in the table
+        // instead of raw item_qr/student_id codes.
+        function toCsvValue(v) {
+            if (v === null || v === undefined) return '';
+            const s = String(v);
+            return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        }
+
+        function rowsToCsv(headers, rows) {
+            const lines = [headers.join(',')];
+            for (const row of rows) {
+                lines.push(headers.map((h) => toCsvValue(row[h])).join(','));
+            }
+            return lines.join('\n');
+        }
+
+        document.getElementById('btnExportLogs')?.addEventListener('click', () => {
+            if (allTransactions.length === 0) {
+                alert('No activity to export yet.');
+                return;
+            }
+
+            const headers = ['Log ID', 'Event Type', 'User', 'Details', 'Status', 'Timestamp'];
+            const rows = allTransactions.map((tx) => {
+                const isBorrow = tx.action === 'borrow';
+                return {
+                    'Log ID': `TXN-${tx.id}`,
+                    'Event Type': isBorrow ? 'Equipment Checkout' : 'Equipment Return',
+                    'User': studentDisplayName(tx.student_id),
+                    'Details': `${isBorrow ? 'Borrowed' : 'Returned'}: ${itemDisplayName(tx.item_qr)}`,
+                    'Status': isBorrow ? 'Borrowed' : 'Returned',
+                    'Timestamp': formatTimestamp(tx.created_at)
+                };
+            });
+
+            const csv = rowsToCsv(headers, rows);
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `co-eqroom-activity-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        });
+
         await loadLookups();
         await loadInitialTransactions();
         subscribeToRealtimeTransactions();
@@ -393,6 +445,8 @@
             &copy; 2026 EquipRoom. All rights reserved.
         </footer>
     </main>
+
+    <script type="module" src="Scripts/rfid-alert-notifications.js" defer></script>
 </body>
 
 </html>

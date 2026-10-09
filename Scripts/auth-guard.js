@@ -3,12 +3,22 @@ import { supabase } from './supabase-config.js'
 
 export async function requireAuth() {
   const { data: { session } } = await supabase.auth.getSession()
-  if (!session) window.location.href = 'index.html'
+  // Return null (instead of letting callers dereference it) as soon as
+  // there's no session -- the redirect below doesn't halt script
+  // execution, so without this, every caller that immediately does
+  // `session.user.id` would throw "Cannot read properties of null"
+  // in the console on a visit from a signed-out browser.
+  if (!session) {
+    window.location.href = 'index.html'
+    return null
+  }
   return session
 }
 
 export async function requireRole(role) {
   const session = await requireAuth()
+  if (!session) return null
+
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
@@ -27,6 +37,10 @@ export async function requireRole(role) {
 // profiles.role === 'admin'.
 async function getOwnProfile(session) {
   const s = session || await requireAuth()
+  // requireAuth() already redirected to index.html if there's no session --
+  // just stop here instead of dereferencing s.user on a null session.
+  if (!s) return { session: null, profile: null }
+
   const { data: profile } = await supabase
     .from('profiles')
     .select('*')
