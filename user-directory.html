@@ -37,12 +37,14 @@
         // known state" -- Borrowed/Returned -- shown in the Status
         // column, same idea as the original mockup).
         //
-        // NOTE: "Biometric Registered" has no real data source yet --
-        // there's no biometric enrollment table -- so it's shown greyed
-        // out rather than faked. Add/Edit/Delete for accounts aren't
-        // wired up either: creating or removing a Supabase Auth user
-        // needs the service-role key, which never belongs in browser
-        // code, so those stay UI-only for now.
+        // "Biometric Registered" is live from admin_fingerprints: admins
+        // show a green fingerprint icon once enrolled, or an "Enroll"
+        // button that kicks off the real hardware enrollment on the
+        // door's ESP32 (see startEnroll() below). Non-admins keep a
+        // greyed-out icon -- only admins use fingerprint door access.
+        // Add/Edit/Delete for accounts aren't wired up: creating or
+        // removing a Supabase Auth user needs the service-role key,
+        // which never belongs in browser code, so those stay UI-only.
         // ============================================================
 
         const tbody = document.getElementById('usersTableBody');
@@ -64,6 +66,7 @@
         let studentsByProfileId = new Map();
         let itemsByQr = new Map();
         let latestTxByStudentId = new Map(); // student_id -> most recent transaction row
+        let fingerprintByProfileId = new Map(); // profile_id -> fingerprint_id
 
         function pick(row, fields) {
             if (!row) return null;
@@ -101,6 +104,25 @@
 
         function itemDisplayName(itemQr) {
             return itemsByQr.get(itemQr)?.item_name || itemQr;
+        }
+
+        function biometricCell(profile) {
+            const isAdmin = (profile.role || '').toLowerCase() === 'admin';
+            if (!isAdmin) {
+                return `<span class="biometric-icon-indicator" style="opacity: 0.35;" title="Only admins use fingerprint door access">
+                            <i data-lucide="fingerprint" style="width: 20px; height: 20px;"></i>
+                        </span>`;
+            }
+            const fingerprintId = fingerprintByProfileId.get(profile.id);
+            if (fingerprintId != null) {
+                return `<span class="biometric-icon-indicator" style="color: var(--color-success);" title="Enrolled as fingerprint #${fingerprintId}">
+                            <i data-lucide="fingerprint" style="width: 20px; height: 20px;"></i>
+                        </span>`;
+            }
+            return `<button class="btn-enroll-fingerprint" data-profile-id="${profile.id}" title="Enroll this admin's fingerprint"
+                        style="background:none; border:1px solid var(--color-primary); color:var(--color-primary); border-radius: var(--radius-md); padding: 4px 8px; font-size:0.72rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:4px;">
+                        <i data-lucide="fingerprint" style="width: 14px; height: 14px;"></i> Enroll
+                    </button>`;
         }
 
         function formatDateTime(iso) {
@@ -141,11 +163,7 @@
                 <td><strong>${displayName(profile)}</strong></td>
                 <td>${displayRole(profile)}</td>
                 <td>${displaySection(profile)}</td>
-                <td style="text-align: center;">
-                    <span class="biometric-icon-indicator" style="opacity: 0.35;" title="Not yet implemented -- no biometric enrollment on file">
-                        <i data-lucide="fingerprint" style="width: 20px; height: 20px;"></i>
-                    </span>
-                </td>
+                <td style="text-align: center;">${biometricCell(profile)}</td>
                 <td>${status ? `<span class="status-tag ${statusClass}">&bull; ${status}</span>` : '<span style="color: var(--color-text-muted);">&mdash;</span>'}</td>
                 <td>
                     <div class="action-buttons-cell" style="justify-content: center;">
@@ -293,6 +311,12 @@
             renderTable();
         }
 
+        async function loadFingerprints() {
+            const { data, error } = await supabase.from('admin_fingerprints').select('*');
+            if (error) { console.error('Failed to load admin_fingerprints:', error); return; }
+            fingerprintByProfileId = new Map((data || []).map((r) => [r.profile_id, r.fingerprint_id]));
+        }
+
         function subscribeRealtime() {
             supabase
                 .channel('user-directory-live')
@@ -304,14 +328,141 @@
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions' }, () => {
                     loadLatestTransactions();
                 })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_fingerprints' }, async () => {
+                    await loadFingerprints();
+                    renderTable();
+                })
                 .subscribe();
         }
+
+        // ============================================================
+        // FINGERPRINT ENROLLMENT — admins only. Reuses the same
+        // door_control command channel the dashboard's Room Access
+        // Status panel uses (command = 'enroll'), and admin_fingerprints
+        // as the source of truth for who's already enrolled.
+        // ============================================================
+
+        const enrollModalOverlay = document.getElementById('enrollModalOverlay');
+        const enrollModalCloseBtn = document.getElementById('enrollModalCloseBtn');
+        const enrollStatusCircle = document.getElementById('enrollStatusCircle');
+        const enrollStatusTitle = document.getElementById('enrollStatusTitle');
+        const enrollStatusSub = document.getElementById('enrollStatusSub');
+
+        const ENROLL_TIMEOUT_MS = 45000;
+        let enrollWatchdog = null;
+        let enrollChannel = null;
+        let enrollingProfileId = null;
+
+        function setEnrollVisual(kind) {
+            if (!enrollStatusCircle) return;
+            enrollStatusCircle.classList.remove('unlocked', 'offline');
+            if (kind === 'success') enrollStatusCircle.classList.add('unlocked');
+            if (kind === 'failed') enrollStatusCircle.classList.add('offline');
+        }
+
+        function closeEnrollModal() {
+            clearTimeout(enrollWatchdog);
+            if (enrollChannel) { supabase.removeChannel(enrollChannel); enrollChannel = null; }
+            enrollingProfileId = null;
+            if (enrollModalOverlay) enrollModalOverlay.hidden = true;
+        }
+
+        function armEnrollWatchdog() {
+            clearTimeout(enrollWatchdog);
+            enrollWatchdog = setTimeout(() => {
+                setEnrollVisual('failed');
+                if (enrollStatusTitle) enrollStatusTitle.textContent = 'No response from the door controller';
+                if (enrollStatusSub) enrollStatusSub.textContent = 'Check that the door ESP32 is online and try again.';
+            }, ENROLL_TIMEOUT_MS);
+        }
+
+        function renderEnrollStatus(row) {
+            if (!row || !enrollStatusTitle || !enrollStatusSub) return;
+            const status = row.enroll_status;
+
+            if (status === 'pending') {
+                setEnrollVisual('pending');
+                enrollStatusTitle.textContent = `Assigned ID #${row.enroll_assigned_id}`;
+                enrollStatusSub.textContent = 'Go to the door sensor and wait for it to ask for a finger.';
+            } else if (status === 'place_finger') {
+                setEnrollVisual('pending');
+                enrollStatusTitle.textContent = 'Place finger on the sensor';
+                enrollStatusSub.textContent = 'Hold it steady until it captures.';
+            } else if (status === 'remove_finger') {
+                setEnrollVisual('pending');
+                enrollStatusTitle.textContent = 'Remove your finger';
+                enrollStatusSub.textContent = 'Lift it off the sensor.';
+            } else if (status === 'place_again') {
+                setEnrollVisual('pending');
+                enrollStatusTitle.textContent = 'Place the same finger again';
+                enrollStatusSub.textContent = 'This confirms the scan.';
+            } else if (status === 'success') {
+                setEnrollVisual('success');
+                enrollStatusTitle.textContent = 'Fingerprint enrolled!';
+                enrollStatusSub.textContent = `Saved as ID #${row.enroll_assigned_id}.`;
+                clearTimeout(enrollWatchdog);
+                fingerprintByProfileId.set(row.enroll_target_profile, row.enroll_assigned_id);
+                renderTable();
+                setTimeout(closeEnrollModal, 2500);
+            } else if (status === 'failed') {
+                setEnrollVisual('failed');
+                enrollStatusTitle.textContent = 'Enrollment failed';
+                enrollStatusSub.textContent = 'The two scans may not have matched closely enough. Try again.';
+                clearTimeout(enrollWatchdog);
+            }
+        }
+
+        async function startEnroll(profile) {
+            const label = displayName(profile);
+            enrollingProfileId = profile.id;
+
+            if (enrollModalOverlay) enrollModalOverlay.hidden = false;
+            setEnrollVisual('pending');
+            if (enrollStatusTitle) enrollStatusTitle.textContent = 'Sending request…';
+            if (enrollStatusSub) enrollStatusSub.textContent = 'Please wait';
+
+            const { data: assignedId, error } = await supabase.rpc('request_fingerprint_enroll', {
+                p_profile_id: profile.id,
+                p_profile_label: label
+            });
+
+            if (error) {
+                console.error('Failed to start enrollment:', error);
+                setEnrollVisual('failed');
+                if (enrollStatusTitle) enrollStatusTitle.textContent = 'Could not start enrollment';
+                if (enrollStatusSub) enrollStatusSub.textContent = error.message || 'Check your connection and try again.';
+                return;
+            }
+
+            armEnrollWatchdog();
+
+            enrollChannel = supabase
+                .channel('enroll-progress-' + profile.id)
+                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'door_control' }, (payload) => {
+                    if (payload.new.enroll_target_profile !== enrollingProfileId) return;
+                    renderEnrollStatus(payload.new);
+                    if (payload.new.enroll_status !== 'success' && payload.new.enroll_status !== 'failed') {
+                        armEnrollWatchdog();
+                    }
+                })
+                .subscribe();
+        }
+
+        enrollModalCloseBtn?.addEventListener('click', closeEnrollModal);
+
+        tbody?.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-enroll-fingerprint');
+            if (!btn) return;
+            const profile = allProfiles.find((p) => p.id === btn.dataset.profileId);
+            if (profile) startEnroll(profile);
+        });
 
         searchInput?.addEventListener('input', () => { currentPage = 1; renderTable(); });
 
         await loadStudents();
         await loadItems();
         await loadLatestTransactions();
+        await loadFingerprints();
         await loadProfiles();
         subscribeRealtime();
     </script>
@@ -548,6 +699,25 @@
             &copy; 2026 EquipRoom. All rights reserved.
         </footer>
     </main>
+
+    <!-- Fingerprint enrollment progress modal -->
+    <div class="modal-overlay" id="enrollModalOverlay" hidden>
+        <div class="modal-box" style="max-width: 420px;">
+            <div class="modal-header">
+                <h3>Enroll Fingerprint</h3>
+                <button class="modal-close-btn" id="enrollModalCloseBtn" aria-label="Close">
+                    <i data-lucide="x" style="width: 18px; height: 18px;"></i>
+                </button>
+            </div>
+            <div style="text-align: center; padding: 10px 0 6px;">
+                <div class="lock-big-circle" id="enrollStatusCircle" style="margin: 0 auto 16px;">
+                    <i data-lucide="fingerprint" style="width: 40px; height: 40px;"></i>
+                </div>
+                <h4 id="enrollStatusTitle" style="font-size: 1.05rem; font-weight: 800; margin-bottom: 6px;">Sending request…</h4>
+                <p id="enrollStatusSub" style="font-size: 0.85rem; color: var(--color-text-secondary);">Please wait</p>
+            </div>
+        </div>
+    </div>
 
     <script type="module" src="Scripts/rfid-alert-notifications.js" defer></script>
 </body>
