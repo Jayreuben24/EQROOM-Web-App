@@ -8,3 +8,5 @@ const supabaseKey = 'sb_publishable_1Nz2tDVakyE5H9BPuBQIaw_eKNKg2Z5';
 // Create and export the Supabase client so other files can use it
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
+
+//deploy
