@@ -96,7 +96,7 @@
                 nameInput.value = editing.item_name || '';
                 qrInput.value = editing.item_qr || '';
                 categoryInput.value = editing.category || '';
-                rackInput.value = editing.storage_rack || '';
+                rackInput.value = editing.specifications || '';
                 statusSelect.value = editing.status || 'available';
             } else {
                 modalTitle.textContent = 'Add Equipment';
@@ -125,7 +125,7 @@
                 item_name: nameInput.value.trim(),
                 item_qr: qrInput.value.trim(),
                 category: categoryInput.value.trim() || null,
-                storage_rack: rackInput.value.trim() || null,
+                specifications: rackInput.value.trim() || null,
                 status: statusSelect.value
             };
 
@@ -197,11 +197,13 @@
             categoryFilter.value = categories.includes(currentValue) ? currentValue : 'all';
         }
 
-        function renderMetrics() {
-            const total = allItems.length;
-            const available = allItems.filter((i) => i.status === 'available').length;
-            const borrowed = allItems.filter((i) => i.status === 'borrowed').length;
-            const maintenance = allItems.filter((i) => i.status === 'maintenance').length;
+        function renderMetrics()
+        {
+            const items = computeFiltered();   // same list the table uses
+            const total = items.length;
+            const available = items.filter((i) => i.status === 'available').length;
+            const borrowed = items.filter((i) => i.status === 'borrowed').length;
+            const maintenance = items.filter((i) => i.status === 'maintenance').length;
             if (metricTotal) metricTotal.textContent = total;
             if (metricAvailable) metricAvailable.textContent = available;
             if (metricBorrowed) metricBorrowed.textContent = borrowed;
@@ -225,7 +227,7 @@
                     </div>
                 </td>
                 <td>${item.category || '&mdash;'}</td>
-                <td>${item.storage_rack || '&mdash;'}</td>
+                <td>${item.specifications || '&mdash;'}</td>
                 <td>${lastBorrower || '&mdash;'}</td>
                 <td><span class="status-tag ${status}">&bull; ${statusLabel}</span></td>
                 <td>
@@ -546,7 +548,7 @@
                                 <th>Asset ID</th>
                                 <th>Equipment Name</th>
                                 <th>Category</th>
-                                <th>Storage Rack</th>
+                                <th>Specifications</th>
                                 <th>Last Borrowed By</th>
                                 <th>Status</th>
                                 <th style="text-align: center;">Action</th>
@@ -609,7 +611,7 @@
                                 placeholder="e.g. Power Tools">
                         </div>
                         <div class="form-group">
-                            <label for="equipmentRack">Storage Rack</label>
+                            <label for="equipmentRack">Specifications</label>
                             <input type="text" id="equipmentRack" class="form-control no-icon"
                                 placeholder="e.g. Rack A-02">
                         </div>
