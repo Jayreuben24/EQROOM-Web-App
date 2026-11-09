@@ -30,7 +30,7 @@
         });
 
         // ============================================================
-        // ACTIVITY LOGS — live from Supabase `transactions`, refreshed
+        // ACTIVITY LOGS — live from Supabase `transactions` + `rfid_logs`, refreshed
         // in real time via Supabase Realtime (no page refresh needed).
         //
         // `students` and `items` have no foreign key onto `transactions`
@@ -42,7 +42,11 @@
         const activityLogsBody = document.getElementById('activityLogsBody');
         const metricTodayLogs = document.getElementById('metricTodayLogs');
         const metricTransactions = document.getElementById('metricTransactions');
+        const metricRfid = document.getElementById('metricRfid');
+        const metricRfidSub = document.getElementById('metricRfidSub');
         const logsShowingCount = document.getElementById('logsShowingCount');
+        const searchInput = document.querySelector('.table-search-input');
+        const filterSelect = document.querySelector('.filter-select');
 
         const MAX_ROWS_SHOWN = 50;
 
@@ -53,7 +57,15 @@
 
         let itemsByQr = new Map();
         let studentsById = new Map();
-        let allTransactions = []; // newest first
+        let allTransactions = []; // newest first (equipment check-in / check-out)
+        let allRfid = [];         // newest first (RFID gate scans from `rfid_logs`)
+        let feed = [];            // both merged, newest first
+
+        function esc(v) {
+            return String(v ?? '').replace(/[&<>"']/g, (c) => (
+                { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+            ));
+        }
 
         function studentDisplayName(studentId) {
             const student = studentsById.get(studentId);
@@ -78,27 +90,92 @@
             });
         }
 
-        function renderRow(tx) {
+        // ---- Normalise both sources into one shape so the table, search,
+        // filters, metrics and CSV export all work off the same list. ----
+        function describeTransaction(tx) {
             const isBorrow = tx.action === 'borrow';
-            const studentName = studentDisplayName(tx.student_id);
-            const itemLabel = itemDisplayName(tx.item_qr);
             const actionWord = isBorrow ? 'Borrowed' : 'Returned';
+            return {
+                kind: isBorrow ? 'checkout' : 'return',
+                ts: tx.created_at,
+                logId: `TXN-${tx.id}`,
+                eventType: `Equipment ${isBorrow ? 'Checkout' : 'Return'}`,
+                user: studentDisplayName(tx.student_id),
+                details: `${actionWord}: ${itemDisplayName(tx.item_qr)}`,
+                status: actionWord,
+                badgeClass: isBorrow ? 'checkout' : 'returned',
+                badgeIcon: isBorrow ? 'arrow-right' : 'corner-down-left',
+                tagClass: isBorrow ? 'borrowed' : 'returned'
+            };
+        }
 
+        function describeRfid(r) {
+            const ok = r.result === 'authorized';
+            const known = !!(r.item_name || r.item_id);
+            const itemLabel = r.item_name || (r.item_id ? `item #${r.item_id}` : null);
+            let details;
+            if (ok) {
+                details = `Gate scan: ${itemLabel || r.rfid_tag} passed (checked out)`;
+            } else if (known) {
+                details = `Gate scan: ${itemLabel} passed without being checked out`;
+            } else {
+                details = `Gate scan: unregistered tag ${r.rfid_tag}`;
+            }
+            return {
+                kind: ok ? 'rfid' : 'rfid-denied',
+                ts: r.scanned_at,
+                logId: `RFID-${r.id}`,
+                eventType: 'RFID Gate Scan',
+                user: 'RFID Gate Reader',
+                details,
+                status: ok ? 'Authorized' : 'Unauthorized',
+                badgeClass: ok ? 'access' : 'denied',
+                badgeIcon: ok ? 'radio' : 'shield-alert',
+                tagClass: ok ? 'active' : 'inactive'
+            };
+        }
+
+        function rebuildFeed() {
+            const merged = [
+                ...allTransactions.map(describeTransaction),
+                ...allRfid.map(describeRfid)
+            ];
+            merged.sort((a, b) => new Date(b.ts) - new Date(a.ts));
+            feed = merged;
+        }
+
+        function matchesFilters(e) {
+            const f = filterSelect?.value || 'all';
+            if (f === 'checkout' && e.kind !== 'checkout') return false;
+            if (f === 'return' && e.kind !== 'return') return false;
+            if (f === 'rfid' && !e.kind.startsWith('rfid')) return false;
+            if (f === 'unauthorized' && e.kind !== 'rfid-denied') return false;
+            if (f === 'door' || f === 'system') return false; // no data source wired yet
+
+            const q = (searchInput?.value || '').trim().toLowerCase();
+            if (q) {
+                const hay = `${e.logId} ${e.eventType} ${e.user} ${e.details} ${e.status}`.toLowerCase();
+                if (!hay.includes(q)) return false;
+            }
+            return true;
+        }
+
+        function renderRow(e) {
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td>#TXN-${tx.id}</td>
+                <td>#${esc(e.logId)}</td>
                 <td>
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <span class="activity-badge ${isBorrow ? 'checkout' : 'returned'}" style="width: 28px; height: 28px;">
-                            <i data-lucide="${isBorrow ? 'arrow-right' : 'corner-down-left'}" style="width: 15px; height: 15px;"></i>
+                        <span class="activity-badge ${e.badgeClass}" style="width: 28px; height: 28px;">
+                            <i data-lucide="${e.badgeIcon}" style="width: 15px; height: 15px;"></i>
                         </span>
-                        <span>Equipment ${isBorrow ? 'Checkout' : 'Return'}</span>
+                        <span>${esc(e.eventType)}</span>
                     </div>
                 </td>
-                <td><strong>${studentName}</strong></td>
-                <td>${actionWord}: ${itemLabel}</td>
-                <td><span class="status-tag ${isBorrow ? 'borrowed' : 'returned'}">${actionWord}</span></td>
-                <td style="color: var(--color-text-secondary);">${formatTimestamp(tx.created_at)}</td>
+                <td><strong>${esc(e.user)}</strong></td>
+                <td>${esc(e.details)}</td>
+                <td><span class="status-tag ${e.tagClass}">${esc(e.status)}</span></td>
+                <td style="color: var(--color-text-secondary);">${formatTimestamp(e.ts)}</td>
                 <td style="text-align: center;">
                     <button class="btn-icon-action edit" title="View details" aria-label="View Details">
                         <i data-lucide="file-text" style="width: 15px; height: 15px;"></i>
@@ -108,18 +185,22 @@
             return tr;
         }
 
-        function updateMetrics() {
+        function updateMetrics(visibleCount) {
             if (metricTransactions) metricTransactions.textContent = allTransactions.length;
 
             const todayStr = new Date().toDateString();
-            const todayCount = allTransactions.filter(
-                (tx) => new Date(tx.created_at).toDateString() === todayStr
-            ).length;
+            const todayCount = feed.filter((e) => new Date(e.ts).toDateString() === todayStr).length;
             if (metricTodayLogs) metricTodayLogs.textContent = todayCount;
 
+            if (metricRfid) metricRfid.textContent = allRfid.length;
+            if (metricRfidSub) {
+                const denied = allRfid.filter((r) => r.result !== 'authorized').length;
+                metricRfidSub.textContent = `${denied} unauthorized`;
+            }
+
             if (logsShowingCount) {
-                const shown = Math.min(allTransactions.length, MAX_ROWS_SHOWN);
-                logsShowingCount.textContent = `Showing ${shown ? 1 : 0} to ${shown} of ${allTransactions.length} entries`;
+                const shown = Math.min(visibleCount, MAX_ROWS_SHOWN);
+                logsShowingCount.textContent = `Showing ${shown ? 1 : 0} to ${shown} of ${visibleCount} entries`;
             }
         }
 
@@ -127,19 +208,23 @@
             if (!activityLogsBody) return;
 
             activityLogsBody.innerHTML = '';
+            const visible = feed.filter(matchesFilters);
 
-            if (allTransactions.length === 0) {
+            if (visible.length === 0) {
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td colspan="7" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">No scans recorded yet. Item check-ins/check-outs from the ESP32 scanner will show up here in real time.</td>`;
+                const msg = feed.length === 0
+                    ? 'No activity recorded yet. Check-ins/check-outs and RFID gate scans will show up here in real time.'
+                    : 'No entries match your search or filter.';
+                tr.innerHTML = `<td colspan="7" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">${msg}</td>`;
                 activityLogsBody.appendChild(tr);
             } else {
-                for (const tx of allTransactions.slice(0, MAX_ROWS_SHOWN)) {
-                    activityLogsBody.appendChild(renderRow(tx));
+                for (const e of visible.slice(0, MAX_ROWS_SHOWN)) {
+                    activityLogsBody.appendChild(renderRow(e));
                 }
             }
 
             if (window.lucide) window.lucide.createIcons();
-            updateMetrics();
+            updateMetrics(visible.length);
         }
 
         async function loadLookups() {
@@ -155,43 +240,44 @@
             studentsById = new Map((students || []).map((s) => [s.student_id, s]));
         }
 
-        async function loadInitialTransactions() {
-            const { data, error } = await supabase
-                .from('transactions')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(MAX_ROWS_SHOWN);
+        async function loadInitialLogs() {
+            const [txRes, rfidRes] = await Promise.all([
+                supabase.from('transactions').select('*').order('created_at', { ascending: false }).limit(MAX_ROWS_SHOWN),
+                supabase.from('rfid_logs').select('*').order('scanned_at', { ascending: false }).limit(MAX_ROWS_SHOWN),
+            ]);
 
-            if (error) {
-                console.error('Failed to load transactions:', error);
-                return;
-            }
+            if (txRes.error) console.error('Failed to load transactions:', txRes.error);
+            if (rfidRes.error) console.error('Failed to load rfid_logs (has the SQL been run?):', rfidRes.error);
 
-            allTransactions = data || [];
+            allTransactions = txRes.data || [];
+            allRfid = rfidRes.data || [];
+            rebuildFeed();
             renderTable();
         }
 
-        function subscribeToRealtimeTransactions() {
+        function subscribeToRealtime() {
             supabase
-                .channel('transactions-live')
-                .on(
-                    'postgres_changes',
-                    { event: 'INSERT', schema: 'public', table: 'transactions' },
-                    (payload) => {
-                        allTransactions.unshift(payload.new);
-                        renderTable();
-                    }
-                )
+                .channel('activity-logs-live')
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions' }, (payload) => {
+                    allTransactions.unshift(payload.new);
+                    rebuildFeed();
+                    renderTable();
+                })
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'rfid_logs' }, (payload) => {
+                    allRfid.unshift(payload.new);
+                    rebuildFeed();
+                    renderTable();
+                })
                 .subscribe();
         }
 
+        searchInput?.addEventListener('input', renderTable);
+        filterSelect?.addEventListener('change', renderTable);
+
         // ---- Export CSV ----
-        // This button previously had no click handler at all -- clicking it
-        // did nothing. Wired here the same way Settings' "Export Data" does
-        // it (client-side CSV, no server round-trip), but using the rows
-        // already loaded into `allTransactions` with their display names
-        // resolved, so the export matches what's actually shown in the table
-        // instead of raw item_qr/student_id codes.
+        // Client-side CSV of everything currently loaded (check-outs, returns
+        // and RFID gate scans) with display names resolved, so the export
+        // matches what's shown in the table.
         function toCsvValue(v) {
             if (v === null || v === undefined) return '';
             const s = String(v);
@@ -207,23 +293,20 @@
         }
 
         document.getElementById('btnExportLogs')?.addEventListener('click', () => {
-            if (allTransactions.length === 0) {
+            if (feed.length === 0) {
                 alert('No activity to export yet.');
                 return;
             }
 
             const headers = ['Log ID', 'Event Type', 'User', 'Details', 'Status', 'Timestamp'];
-            const rows = allTransactions.map((tx) => {
-                const isBorrow = tx.action === 'borrow';
-                return {
-                    'Log ID': `TXN-${tx.id}`,
-                    'Event Type': isBorrow ? 'Equipment Checkout' : 'Equipment Return',
-                    'User': studentDisplayName(tx.student_id),
-                    'Details': `${isBorrow ? 'Borrowed' : 'Returned'}: ${itemDisplayName(tx.item_qr)}`,
-                    'Status': isBorrow ? 'Borrowed' : 'Returned',
-                    'Timestamp': formatTimestamp(tx.created_at)
-                };
-            });
+            const rows = feed.map((e) => ({
+                'Log ID': e.logId,
+                'Event Type': e.eventType,
+                'User': e.user,
+                'Details': e.details,
+                'Status': e.status,
+                'Timestamp': formatTimestamp(e.ts)
+            }));
 
             const csv = rowsToCsv(headers, rows);
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -238,8 +321,8 @@
         });
 
         await loadLookups();
-        await loadInitialTransactions();
-        subscribeToRealtimeTransactions();
+        await loadInitialLogs();
+        subscribeToRealtime();
     </script>
 </head>
 
@@ -376,6 +459,17 @@
                         <span style="font-size: 0.78rem; color: var(--color-text-secondary);">Check-in & out</span>
                     </div>
                 </div>
+
+                <div class="metric-card">
+                    <div class="metric-icon-box metric-icon-red">
+                        <i data-lucide="radio" style="width: 24px; height: 24px;"></i>
+                    </div>
+                    <div class="metric-data">
+                        <div class="metric-label">RFID Gate Scans</div>
+                        <div class="metric-value" id="metricRfid">0</div>
+                        <span id="metricRfidSub" style="font-size: 0.78rem; color: var(--color-text-secondary);">0 unauthorized</span>
+                    </div>
+                </div>
             </div>
 
             <button class="btn-primary-action" id="btnExportLogs">
@@ -399,6 +493,8 @@
                         <option value="door">Door Access</option>
                         <option value="checkout">Check-out</option>
                         <option value="return">Return</option>
+                        <option value="rfid">RFID Gate Scan</option>
+                        <option value="unauthorized">Unauthorized RFID</option>
                         <option value="system">System & Cloud</option>
                     </select>
                 </div>
