@@ -32,9 +32,10 @@ export async function requireRole(role) {
 }
 
 // Fetches the signed-in user's own `profiles` row (role, name, etc.).
-// Shared by requireAdmin/requireStudent below so both guards agree on
-// what "admin" means -- exactly what is_admin() checks in Supabase:
-// profiles.role === 'admin'.
+// Shared by every guard below so they all agree on what each role means:
+//   profiles.role === 'admin'   -> admin pages
+//   profiles.role === 'student' -> student portal
+//   anything else ('user', null, unreadable) -> restricted holding page
 async function getOwnProfile(session) {
   const s = session || await requireAuth()
   // requireAuth() already redirected to index.html if there's no session --
@@ -49,27 +50,50 @@ async function getOwnProfile(session) {
   return { session: s, profile }
 }
 
+// Where each role lands. Unknown/missing roles fall through to the
+// restricted page, which is the safe default.
+export function homeForRole(role) {
+  if (role === 'admin') return 'dashboard.html'
+  if (role === 'student') return 'student-dashboard.html'
+  return 'user-dashboard.html'
+}
+
 // Guards the admin pages (dashboard, inventory, users & directory, activity
-// logs, settings). A signed-in student who navigates here directly gets
-// bounced to their own portal instead of being let in or booted to login.
+// logs, settings). Anyone who isn't an admin is sent to their own landing
+// page instead of being let in.
 export async function requireAdmin() {
   const { session, profile } = await getOwnProfile()
+  if (!session) return null
   if (!profile || profile.role !== 'admin') {
-    window.location.href = 'student-dashboard.html'
+    window.location.href = homeForRole(profile?.role)
     return null
   }
   return session
 }
 
-// Guards the student portal. An admin account that wanders here is sent
-// back to the admin dashboard instead.
+// Guards the student portal. Admins go back to the admin dashboard, and
+// accounts that aren't students (role 'user') go to the restricted page.
 export async function requireStudent() {
   const { session, profile } = await getOwnProfile()
-  if (profile && profile.role === 'admin') {
-    window.location.href = 'dashboard.html'
+  if (!session) return null
+  if (!profile || profile.role !== 'student') {
+    window.location.href = homeForRole(profile?.role)
     return null
   }
   return session
+}
+
+// Guards the restricted "user" page. Admins and students are sent to their
+// own areas; everyone else (role 'user', or no readable role) stays here.
+// Returns { session, profile } so the page can show the account details.
+export async function requireUser() {
+  const { session, profile } = await getOwnProfile()
+  if (!session) return { session: null, profile: null }
+  if (profile && (profile.role === 'admin' || profile.role === 'student')) {
+    window.location.href = homeForRole(profile.role)
+    return { session: null, profile }
+  }
+  return { session, profile }
 }
 
 // Ends the current Supabase session and returns the user to the login screen.
