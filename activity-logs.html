@@ -30,7 +30,7 @@
         });
 
         // ============================================================
-        // ACTIVITY LOGS — live from Supabase `transactions` + `rfid_logs`, refreshed
+        // ACTIVITY LOGS — live from Supabase `transactions` + `rfid_logs` + `door_activity`, refreshed
         // in real time via Supabase Realtime (no page refresh needed).
         //
         // `students` and `items` have no foreign key onto `transactions`
@@ -43,6 +43,7 @@
         const metricTodayLogs = document.getElementById('metricTodayLogs');
         const metricTransactions = document.getElementById('metricTransactions');
         const metricRfid = document.getElementById('metricRfid');
+        const metricDoor = document.getElementById('metricDoor');
         const metricRfidSub = document.getElementById('metricRfidSub');
         const logsShowingCount = document.getElementById('logsShowingCount');
         const searchInput = document.querySelector('.table-search-input');
@@ -59,6 +60,10 @@
         let studentsById = new Map();
         let allTransactions = []; // newest first (equipment check-in / check-out)
         let allRfid = [];         // newest first (RFID gate scans from `rfid_logs`)
+        let allDoor = [];         // newest first (door lock / unlock / fingerprint events from `door_activity`)
+        // Exact totals come from COUNT queries, because the lists above are
+        // capped at MAX_ROWS_SHOWN rows and would under-report the cards.
+        const counts = { tx: 0, rfid: 0, rfidDenied: 0, door: 0 };
         let feed = [];            // both merged, newest first
 
         function esc(v) {
@@ -135,10 +140,56 @@
             };
         }
 
+        function describeDoor(d) {
+            const action = (d.action || '').toLowerCase();
+            const granted = (d.status || '').toLowerCase() === 'granted';
+            const fp = d.fingerprint_id != null ? `Fingerprint #${d.fingerprint_id}` : null;
+
+            let eventType, details, badgeIcon;
+            if (action === 'door_access') {
+                eventType = 'Door Access';
+                details = granted
+                    ? `${fp || 'Biometric scan'} opened the door`
+                    : `${fp || 'Biometric scan'} was denied entry`;
+                badgeIcon = granted ? 'lock-keyhole-open' : 'shield-alert';
+            } else if (action === 'unlock') {
+                eventType = 'Door Unlock';
+                details = 'Door unlocked';
+                badgeIcon = 'lock-keyhole-open';
+            } else if (action === 'lock') {
+                eventType = 'Door Lock';
+                details = 'Door locked';
+                badgeIcon = 'lock';
+            } else if (action === 'enroll') {
+                eventType = 'Fingerprint Enrollment';
+                details = `${fp || 'Fingerprint'} enrolled`;
+                badgeIcon = 'fingerprint';
+            } else {
+                eventType = action ? action.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Door Event';
+                details = eventType;
+                badgeIcon = 'door-open';
+            }
+
+            const statusLabel = d.status ? d.status.charAt(0).toUpperCase() + d.status.slice(1) : '—';
+            return {
+                kind: action === 'enroll' ? 'system' : 'door',
+                ts: d.created_at,
+                logId: `DOOR-${d.id}`,
+                eventType,
+                user: d.name || fp || 'System',
+                details,
+                status: statusLabel,
+                badgeClass: granted ? 'access' : 'denied',
+                badgeIcon,
+                tagClass: granted ? 'active' : 'inactive'
+            };
+        }
+
         function rebuildFeed() {
             const merged = [
                 ...allTransactions.map(describeTransaction),
-                ...allRfid.map(describeRfid)
+                ...allRfid.map(describeRfid),
+                ...allDoor.map(describeDoor)
             ];
             merged.sort((a, b) => new Date(b.ts) - new Date(a.ts));
             feed = merged;
@@ -150,7 +201,8 @@
             if (f === 'return' && e.kind !== 'return') return false;
             if (f === 'rfid' && !e.kind.startsWith('rfid')) return false;
             if (f === 'unauthorized' && e.kind !== 'rfid-denied') return false;
-            if (f === 'door' || f === 'system') return false; // no data source wired yet
+            if (f === 'door' && e.kind !== 'door') return false;
+            if (f === 'system' && e.kind !== 'system') return false;
 
             const q = (searchInput?.value || '').trim().toLowerCase();
             if (q) {
@@ -186,16 +238,16 @@
         }
 
         function updateMetrics(visibleCount) {
-            if (metricTransactions) metricTransactions.textContent = allTransactions.length;
+            if (metricTransactions) metricTransactions.textContent = counts.tx;
+            if (metricDoor) metricDoor.textContent = counts.door;
 
             const todayStr = new Date().toDateString();
             const todayCount = feed.filter((e) => new Date(e.ts).toDateString() === todayStr).length;
             if (metricTodayLogs) metricTodayLogs.textContent = todayCount;
 
-            if (metricRfid) metricRfid.textContent = allRfid.length;
+            if (metricRfid) metricRfid.textContent = counts.rfid;
             if (metricRfidSub) {
-                const denied = allRfid.filter((r) => r.result !== 'authorized').length;
-                metricRfidSub.textContent = `${denied} unauthorized`;
+                metricRfidSub.textContent = `${counts.rfidDenied} unauthorized`;
             }
 
             if (logsShowingCount) {
@@ -240,17 +292,35 @@
             studentsById = new Map((students || []).map((s) => [s.student_id, s]));
         }
 
+        async function loadCounts() {
+            const head = { count: 'exact', head: true };
+            const [tx, rfid, rfidBad, door] = await Promise.all([
+                supabase.from('transactions').select('*', head),
+                supabase.from('rfid_logs').select('*', head),
+                supabase.from('rfid_logs').select('*', head).eq('result', 'unauthorized'),
+                supabase.from('door_activity').select('*', head).eq('action', 'door_access').eq('status', 'granted'),
+            ]);
+            counts.tx = tx.count ?? 0;
+            counts.rfid = rfid.count ?? 0;
+            counts.rfidDenied = rfidBad.count ?? 0;
+            counts.door = door.count ?? 0;
+        }
+
         async function loadInitialLogs() {
-            const [txRes, rfidRes] = await Promise.all([
+            const [txRes, rfidRes, doorRes] = await Promise.all([
                 supabase.from('transactions').select('*').order('created_at', { ascending: false }).limit(MAX_ROWS_SHOWN),
                 supabase.from('rfid_logs').select('*').order('scanned_at', { ascending: false }).limit(MAX_ROWS_SHOWN),
+                supabase.from('door_activity').select('*').order('created_at', { ascending: false }).limit(MAX_ROWS_SHOWN),
             ]);
 
             if (txRes.error) console.error('Failed to load transactions:', txRes.error);
             if (rfidRes.error) console.error('Failed to load rfid_logs (has the SQL been run?):', rfidRes.error);
+            if (doorRes.error) console.error('Failed to load door_activity (RLS policy?):', doorRes.error);
 
             allTransactions = txRes.data || [];
             allRfid = rfidRes.data || [];
+            allDoor = doorRes.data || [];
+            await loadCounts();
             rebuildFeed();
             renderTable();
         }
@@ -260,11 +330,20 @@
                 .channel('activity-logs-live')
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions' }, (payload) => {
                     allTransactions.unshift(payload.new);
+                    counts.tx++;
                     rebuildFeed();
                     renderTable();
                 })
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'rfid_logs' }, (payload) => {
                     allRfid.unshift(payload.new);
+                    counts.rfid++;
+                    if (payload.new.result !== 'authorized') counts.rfidDenied++;
+                    rebuildFeed();
+                    renderTable();
+                })
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'door_activity' }, (payload) => {
+                    allDoor.unshift(payload.new);
+                    if (payload.new.action === 'door_access' && payload.new.status === 'granted') counts.door++;
                     rebuildFeed();
                     renderTable();
                 })
@@ -444,7 +523,7 @@
                     </div>
                     <div class="metric-data">
                         <div class="metric-label">Door Accesses</div>
-                        <div class="metric-value">0</div>
+                        <div class="metric-value" id="metricDoor">0</div>
                         <span style="font-size: 0.78rem; color: var(--color-text-secondary);">Biometric entries</span>
                     </div>
                 </div>
