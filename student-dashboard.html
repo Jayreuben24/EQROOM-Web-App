@@ -22,21 +22,26 @@
         import { requireStudent, logout } from './Scripts/auth-guard.js';
         import { supabase } from './Scripts/supabase-config.js';
 
+        // ============================================================
+        // STUDENT PORTAL -- read-only home for a signed-in student:
+        //   1. Their own stats + equipment they currently have borrowed.
+        //   2. A live look at what's available to borrow (from `items`).
+        //   3. Their own borrow/return history (from `transactions`,
+        //      matched to their `students` row via `profile_id`).
+        // Nothing here writes to the database. Guarded by requireStudent(),
+        // which bounces admins to dashboard.html and signed-out visitors
+        // to index.html.
+        // ============================================================
+
         const session = await requireStudent();
+        // Redirect has already been triggered -- stop here instead of
+        // dereferencing a null session below.
+        if (!session) throw new Error('Redirecting: no valid student session.');
 
         document.getElementById('logoutNavLink')?.addEventListener('click', (e) => {
             e.preventDefault();
             logout();
         });
-
-        // ============================================================
-        // STUDENT PORTAL — read-only view for a signed-in student:
-        //   1. Available equipment they can go borrow (from `items`).
-        //   2. Their own borrow/return history (from `transactions`,
-        //      matched to their `students` row via `profile_id`).
-        // Nothing here writes to the database. Guarded by requireStudent()
-        // above, which bounces admins back to dashboard.html.
-        // ============================================================
 
         const NAME_FIELDS = ['full_name', 'fullname', 'name', 'display_name'];
 
@@ -44,7 +49,16 @@
         let myStudent = null;
         let allItems = [];
         let itemsByQr = new Map();
-        let lastBorrowerByQr = new Map(); // item_qr -> student_id of most recent borrower
+        // item_qr -> { student_id, created_at } of the most recent borrow
+        let lastBorrowByQr = new Map();
+        let myTransactions = [];
+
+        // ---- Helpers ----
+        function esc(value) {
+            return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
 
         function pickName(obj, fallback) {
             if (!obj) return fallback;
@@ -54,6 +68,25 @@
             return fallback;
         }
 
+        function formatDateTime(iso) {
+            return new Date(iso).toLocaleString('en-US', {
+                month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
+            });
+        }
+
+        function formatTime(iso) {
+            return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        }
+
+        function emptyRow(cols, message) {
+            return `<tr><td colspan="${cols}" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">${message}</td></tr>`;
+        }
+
+        function refreshIcons() {
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        // ---- Who am I ----
         async function loadMe() {
             const { data: profile, error: profileError } = await supabase
                 .from('profiles')
@@ -83,12 +116,93 @@
             }
         }
 
-        // ---- Available Equipment ----
-        const equipmentBody = document.getElementById('availableEquipmentBody');
-        const equipmentSearch = document.getElementById('equipmentSearchInput');
+        // ---- Items I currently hold ----
+        function myBorrowedItems() {
+            if (!myStudent) return [];
+            return allItems
+                .filter((i) => i.status === 'borrowed' && lastBorrowByQr.get(i.item_qr)?.student_id === myStudent.student_id)
+                .map((i) => ({ item: i, since: lastBorrowByQr.get(i.item_qr).created_at }));
+        }
+
+        // ---- Metrics + donut ----
         const metricAvailable = document.getElementById('metricAvailable');
         const metricMyBorrowed = document.getElementById('metricMyBorrowed');
         const metricMyHistory = document.getElementById('metricMyHistory');
+        const metricMaintenance = document.getElementById('metricMaintenance');
+
+        const donutAvailableArc = document.getElementById('donutAvailableArc');
+        const donutBorrowedArc = document.getElementById('donutBorrowedArc');
+        const donutMaintenanceArc = document.getElementById('donutMaintenanceArc');
+        const legendAvailable = document.getElementById('legendAvailable');
+        const legendBorrowed = document.getElementById('legendBorrowed');
+        const legendMaintenance = document.getElementById('legendMaintenance');
+
+        function renderMetrics() {
+            const total = allItems.length;
+            const available = allItems.filter((i) => i.status === 'available').length;
+            const borrowed = allItems.filter((i) => i.status === 'borrowed').length;
+            const maintenance = allItems.filter((i) => i.status === 'maintenance').length;
+
+            if (metricAvailable) metricAvailable.textContent = available;
+            if (metricMaintenance) metricMaintenance.textContent = maintenance;
+            if (metricMyBorrowed) metricMyBorrowed.textContent = myBorrowedItems().length;
+
+            const pct = (n) => (total ? Math.round((n / total) * 1000) / 10 : 0);
+            const availablePct = pct(available);
+            const borrowedPct = pct(borrowed);
+            const maintenancePct = pct(maintenance);
+
+            if (donutAvailableArc) {
+                donutAvailableArc.setAttribute('stroke-dasharray', `${availablePct} ${100 - availablePct}`);
+                donutAvailableArc.setAttribute('stroke-dashoffset', '0');
+            }
+            if (donutBorrowedArc) {
+                donutBorrowedArc.setAttribute('stroke-dasharray', `${borrowedPct} ${100 - borrowedPct}`);
+                donutBorrowedArc.setAttribute('stroke-dashoffset', `${-availablePct}`);
+            }
+            if (donutMaintenanceArc) {
+                donutMaintenanceArc.setAttribute('stroke-dasharray', `${maintenancePct} ${100 - maintenancePct}`);
+                donutMaintenanceArc.setAttribute('stroke-dashoffset', `${-(availablePct + borrowedPct)}`);
+            }
+            if (legendAvailable) legendAvailable.textContent = `${available} (${Math.round(availablePct)}%)`;
+            if (legendBorrowed) legendBorrowed.textContent = `${borrowed} (${Math.round(borrowedPct)}%)`;
+            if (legendMaintenance) legendMaintenance.textContent = `${maintenance} (${Math.round(maintenancePct)}%)`;
+        }
+
+        // ---- Currently Borrowed by Me ----
+        const myBorrowedBody = document.getElementById('myBorrowedBody');
+
+        function renderMyBorrowed() {
+            if (!myBorrowedBody) return;
+            const rows = myBorrowedItems();
+
+            myBorrowedBody.innerHTML = '';
+            if (rows.length === 0) {
+                myBorrowedBody.innerHTML = emptyRow(3, "You don't have any equipment checked out right now.");
+                return;
+            }
+            for (const { item, since } of rows) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div class="activity-badge checkout">
+                                <i data-lucide="external-link" style="width: 16px; height: 16px;"></i>
+                            </div>
+                            <span>${esc(item.item_name)}</span>
+                        </div>
+                    </td>
+                    <td>${esc(item.category) || '&mdash;'}</td>
+                    <td>${formatDateTime(since)}</td>
+                `;
+                myBorrowedBody.appendChild(tr);
+            }
+            refreshIcons();
+        }
+
+        // ---- Available Equipment ----
+        const equipmentBody = document.getElementById('availableEquipmentBody');
+        const equipmentSearch = document.getElementById('equipmentSearchInput');
 
         function renderAvailableEquipment() {
             if (!equipmentBody) return;
@@ -101,7 +215,7 @@
 
             equipmentBody.innerHTML = '';
             if (available.length === 0) {
-                equipmentBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">No available equipment right now.</td></tr>`;
+                equipmentBody.innerHTML = emptyRow(4, query ? 'No equipment matches your search.' : 'No available equipment right now.');
             } else {
                 for (const item of available) {
                     const tr = document.createElement('tr');
@@ -111,29 +225,17 @@
                                 <div class="activity-badge" style="background: rgba(34, 197, 94, 0.15); color: var(--color-success);">
                                     <i data-lucide="check-circle" style="width: 16px; height: 16px;"></i>
                                 </div>
-                                <span>${item.item_name}</span>
+                                <span>${esc(item.item_name)}</span>
                             </div>
                         </td>
-                        <td>${item.category || '&mdash;'}</td>
-                        <td>${item.storage_rack || '&mdash;'}</td>
+                        <td>${esc(item.category) || '&mdash;'}</td>
+                        <td>${esc(item.storage_rack) || '&mdash;'}</td>
                         <td><span class="status-tag available">&bull; Available</span></td>
                     `;
                     equipmentBody.appendChild(tr);
                 }
             }
-            if (window.lucide) window.lucide.createIcons();
-        }
-
-        function renderMetrics() {
-            const total = allItems.length;
-            const available = allItems.filter((i) => i.status === 'available').length;
-            const myBorrowed = myStudent
-                ? allItems.filter((i) => i.status === 'borrowed' && lastBorrowerByQr.get(i.item_qr) === myStudent.student_id).length
-                : 0;
-
-            if (metricAvailable) metricAvailable.textContent = available;
-            if (metricMyBorrowed) metricMyBorrowed.textContent = myBorrowed;
-            void total;
+            refreshIcons();
         }
 
         async function loadItems() {
@@ -142,10 +244,13 @@
             allItems = data || [];
             itemsByQr = new Map(allItems.map((i) => [i.item_qr, i]));
             renderAvailableEquipment();
+            renderMyBorrowed();
             renderMetrics();
+            renderRecentActivity();
+            renderMyHistory();
         }
 
-        async function loadLastBorrowers() {
+        async function loadLastBorrows() {
             const { data, error } = await supabase
                 .from('transactions')
                 .select('item_qr, student_id, created_at')
@@ -153,53 +258,76 @@
                 .order('created_at', { ascending: false });
             if (error) { console.error('Failed to load borrow history:', error); return; }
 
-            lastBorrowerByQr = new Map();
+            lastBorrowByQr = new Map();
             for (const row of data || []) {
-                if (!lastBorrowerByQr.has(row.item_qr)) {
-                    lastBorrowerByQr.set(row.item_qr, row.student_id);
+                if (!lastBorrowByQr.has(row.item_qr)) {
+                    lastBorrowByQr.set(row.item_qr, { student_id: row.student_id, created_at: row.created_at });
                 }
             }
+            renderMyBorrowed();
             renderMetrics();
         }
 
-        // ---- My Borrow History ----
+        // ---- My transactions: Recent Activity (card) + My Borrow History (table) ----
+        const recentActivityList = document.getElementById('recentActivityList');
         const historyBody = document.getElementById('myHistoryBody');
 
-        function formatDateTime(iso) {
-            return new Date(iso).toLocaleString('en-US', {
-                month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
-            });
+        function itemName(qr) {
+            return itemsByQr.get(qr)?.item_name || qr;
         }
 
-        async function loadMyHistory() {
+        function renderRecentActivity() {
+            if (!recentActivityList) return;
+            if (!myStudent) {
+                recentActivityList.innerHTML = `<p style="color: var(--color-text-secondary); padding: 8px 4px;">No linked student record yet.</p>`;
+                return;
+            }
+            const rows = myTransactions.slice(0, 5);
+            if (rows.length === 0) {
+                recentActivityList.innerHTML = `<p style="color: var(--color-text-secondary); padding: 8px 4px;">No activity yet.</p>`;
+                return;
+            }
+
+            recentActivityList.innerHTML = '';
+            for (const tx of rows) {
+                const isBorrow = tx.action === 'borrow';
+                const row = document.createElement('div');
+                row.className = 'activity-mini-item';
+                row.innerHTML = `
+                    <div class="activity-item-left">
+                        <div class="activity-badge ${isBorrow ? 'checkout' : 'returned'}">
+                            <i data-lucide="${isBorrow ? 'external-link' : 'corner-down-left'}" style="width: 16px; height: 16px;"></i>
+                        </div>
+                        <div class="activity-details">
+                            <h5>${isBorrow ? 'Checked-out' : 'Returned'}: ${esc(itemName(tx.item_qr))}</h5>
+                            <p>${formatDateTime(tx.created_at)}</p>
+                        </div>
+                    </div>
+                    <span class="activity-time">${formatTime(tx.created_at)}</span>
+                `;
+                recentActivityList.appendChild(row);
+            }
+            refreshIcons();
+        }
+
+        function renderMyHistory() {
             if (!historyBody) return;
             if (!myStudent) {
-                historyBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">No linked student record yet, so there's no borrow history to show.</td></tr>`;
+                historyBody.innerHTML = emptyRow(3, "No linked student record yet, so there's no borrow history to show.");
                 if (metricMyHistory) metricMyHistory.textContent = '0';
                 return;
             }
 
-            const { data, error } = await supabase
-                .from('transactions')
-                .select('*')
-                .eq('student_id', myStudent.student_id)
-                .order('created_at', { ascending: false })
-                .limit(50);
-
-            if (error) { console.error('Failed to load my transactions:', error); return; }
-
-            const rows = data || [];
-            if (metricMyHistory) metricMyHistory.textContent = rows.length;
+            if (metricMyHistory) metricMyHistory.textContent = myTransactions.length;
 
             historyBody.innerHTML = '';
-            if (rows.length === 0) {
-                historyBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">No borrow activity yet.</td></tr>`;
+            if (myTransactions.length === 0) {
+                historyBody.innerHTML = emptyRow(3, 'No borrow activity yet.');
                 return;
             }
 
-            for (const tx of rows) {
+            for (const tx of myTransactions) {
                 const isBorrow = tx.action === 'borrow';
-                const itemName = itemsByQr.get(tx.item_qr)?.item_name || tx.item_qr;
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>
@@ -207,7 +335,7 @@
                             <div class="activity-badge ${isBorrow ? 'checkout' : 'returned'}">
                                 <i data-lucide="${isBorrow ? 'external-link' : 'corner-down-left'}" style="width: 16px; height: 16px;"></i>
                             </div>
-                            <span>${itemName}</span>
+                            <span>${esc(itemName(tx.item_qr))}</span>
                         </div>
                     </td>
                     <td><span class="status-tag ${isBorrow ? 'borrowed' : 'available'}">&bull; ${isBorrow ? 'Borrowed' : 'Returned'}</span></td>
@@ -215,9 +343,29 @@
                 `;
                 historyBody.appendChild(tr);
             }
-            if (window.lucide) window.lucide.createIcons();
+            refreshIcons();
         }
 
+        async function loadMyTransactions() {
+            if (!myStudent) {
+                renderRecentActivity();
+                renderMyHistory();
+                return;
+            }
+            const { data, error } = await supabase
+                .from('transactions')
+                .select('*')
+                .eq('student_id', myStudent.student_id)
+                .order('created_at', { ascending: false })
+                .limit(50);
+            if (error) { console.error('Failed to load my transactions:', error); return; }
+
+            myTransactions = data || [];
+            renderRecentActivity();
+            renderMyHistory();
+        }
+
+        // ---- Live updates ----
         function subscribeRealtime() {
             supabase
                 .channel('student-portal-live')
@@ -225,8 +373,8 @@
                     loadItems();
                 })
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions' }, () => {
-                    loadLastBorrowers();
-                    loadMyHistory();
+                    loadLastBorrows();
+                    loadMyTransactions();
                 })
                 .subscribe();
         }
@@ -235,8 +383,7 @@
 
         await loadMe();
         await loadItems();
-        await loadLastBorrowers();
-        await loadMyHistory();
+        await Promise.all([loadLastBorrows(), loadMyTransactions()]);
         subscribeRealtime();
     </script>
 </head>
@@ -254,7 +401,7 @@
             </div>
             <div class="brand-text">
                 <h1>CO-EQROOM</h1>
-                <p>IoT-Based Equipment Room<br>Management System</p>
+                <p>IoT-Based Equipment<br>Room Management<br>System</p>
             </div>
             <button class="btn-sidebar-collapse" id="sidebarCollapseBtn" aria-label="Toggle sidebar width"
                 title="Minimize Sidebar">
@@ -306,12 +453,12 @@
                 <div class="live-datetime">
                     <div class="datetime-item">
                         <i data-lucide="calendar"></i>
-                        <span id="liveDate">May 25, 2026</span>
+                        <span id="liveDate">-----</span>
                     </div>
                     <span class="datetime-separator">|</span>
                     <div class="datetime-item">
                         <i data-lucide="clock"></i>
-                        <span id="liveTime">10:30 AM</span>
+                        <span id="liveTime">-----</span>
                     </div>
                 </div>
                 <div class="header-user">
@@ -339,6 +486,7 @@
                 <div class="metric-data">
                     <div class="metric-label">Available Equipment</div>
                     <div class="metric-value" id="metricAvailable">0</div>
+                    <a href="#available-equipment" class="metric-link">Browse</a>
                 </div>
             </div>
 
@@ -347,8 +495,9 @@
                     <i data-lucide="log-out" style="width: 24px; height: 24px;"></i>
                 </div>
                 <div class="metric-data">
-                    <div class="metric-label">Currently Borrowed by Me</div>
+                    <div class="metric-label">Borrowed by Me</div>
                     <div class="metric-value" id="metricMyBorrowed">0</div>
+                    <a href="#my-borrowed" class="metric-link">View</a>
                 </div>
             </div>
 
@@ -357,14 +506,127 @@
                     <i data-lucide="clipboard-list" style="width: 24px; height: 24px;"></i>
                 </div>
                 <div class="metric-data">
-                    <div class="metric-label">My Total Transactions</div>
+                    <div class="metric-label">My Transactions</div>
                     <div class="metric-value" id="metricMyHistory">0</div>
+                    <a href="#my-history" class="metric-link">View</a>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-icon-box metric-icon-red">
+                    <i data-lucide="wrench" style="width: 24px; height: 24px;"></i>
+                </div>
+                <div class="metric-data">
+                    <div class="metric-label">Under Maintenance</div>
+                    <div class="metric-value" id="metricMaintenance">0</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Middle Row: My Recent Activity, Equipment Availability Donut, Quick Actions -->
+        <section class="dash-middle-grid">
+            <!-- 1. My Recent Activity -->
+            <div class="glass-panel">
+                <div class="card-title-bar">
+                    <h3>My Recent Activity</h3>
+                    <a href="#my-history">View all</a>
+                </div>
+                <div class="activity-mini-list" id="recentActivityList">
+                    <p style="color: var(--color-text-secondary); padding: 8px 4px;">Loading...</p>
+                </div>
+            </div>
+
+            <!-- 2. Equipment Availability Overview -->
+            <div class="glass-panel">
+                <div class="card-title-bar">
+                    <h3>Equipment Availability</h3>
+                </div>
+                <div class="chart-container">
+                    <svg viewBox="0 0 42 42" class="donut-chart-svg">
+                        <circle class="donut-track" cx="21" cy="21" r="15.915" fill="transparent" stroke="#f3f4f6" stroke-width="6.5">
+                        </circle>
+                        <!-- Available -->
+                        <circle id="donutAvailableArc" cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--color-success)"
+                            stroke-width="6.5" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
+                        <!-- Borrowed -->
+                        <circle id="donutBorrowedArc" cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--color-primary)"
+                            stroke-width="6.5" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
+                        <!-- Maintenance -->
+                        <circle id="donutMaintenanceArc" cx="21" cy="21" r="15.915" fill="transparent" stroke="var(--color-danger)"
+                            stroke-width="6.5" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
+                    </svg>
+
+                    <div class="donut-legend">
+                        <div class="legend-item">
+                            <span class="legend-dot available"></span>
+                            <span>Available &nbsp;<strong id="legendAvailable">0 (0%)</strong></span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-dot borrowed"></span>
+                            <span>Borrowed &nbsp;<strong id="legendBorrowed">0 (0%)</strong></span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-dot maintenance"></span>
+                            <span>Maintenance &nbsp;<strong id="legendMaintenance">0 (0%)</strong></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. Quick Actions -->
+            <div class="glass-panel">
+                <div class="card-title-bar">
+                    <h3>Quick Actions</h3>
+                </div>
+                <div class="quick-action-buttons">
+                    <a href="#available-equipment" class="btn-quick-action">
+                        <i data-lucide="search"></i>
+                        <span>Browse Equipment</span>
+                    </a>
+                    <a href="#my-borrowed" class="btn-quick-action">
+                        <i data-lucide="log-out"></i>
+                        <span>My Borrowed Items</span>
+                    </a>
+                    <a href="#my-history" class="btn-quick-action">
+                        <i data-lucide="file-text"></i>
+                        <span>My Borrow History</span>
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- Currently Borrowed by Me -->
+        <section class="glass-panel" id="my-borrowed">
+            <div class="table-header-bar">
+                <h3 style="font-size: 1rem; font-weight: 800; text-transform: uppercase;">Currently Borrowed by Me</h3>
+            </div>
+
+            <div class="table-scroll-wrap">
+                <div class="table-responsive">
+                    <table class="custom-table" style="min-width: 480px;">
+                        <thead>
+                            <tr>
+                                <th>Equipment</th>
+                                <th>Category</th>
+                                <th>Borrowed On</th>
+                            </tr>
+                        </thead>
+                        <tbody id="myBorrowedBody">
+                            <tr>
+                                <td colspan="3" style="text-align:center; color: var(--color-text-secondary); padding: 28px;">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="table-scroll-hint">
+                    <i data-lucide="move-horizontal"></i>
+                    <span>Swipe to see more columns</span>
                 </div>
             </div>
         </section>
 
         <!-- Available Equipment -->
-        <section class="glass-panel">
+        <section class="glass-panel" id="available-equipment">
             <div class="table-header-bar">
                 <h3 style="font-size: 1rem; font-weight: 800; text-transform: uppercase;">Available Equipment</h3>
                 <div class="search-filter-wrapper">
@@ -402,7 +664,7 @@
         </section>
 
         <!-- My Borrow History -->
-        <section class="glass-panel">
+        <section class="glass-panel" id="my-history">
             <div class="table-header-bar">
                 <h3 style="font-size: 1rem; font-weight: 800; text-transform: uppercase;">My Borrow History</h3>
             </div>
