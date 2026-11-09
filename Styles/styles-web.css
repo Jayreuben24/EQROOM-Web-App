@@ -836,6 +836,7 @@ body.sidebar-is-minimized .main-content {
 .activity-badge.checkout { background: var(--color-info); }
 .activity-badge.returned { background: var(--color-primary); }
 .activity-badge.backup { background: var(--color-warning); }
+.activity-badge.denied { background: var(--color-danger); }
 
 .activity-details h5 {
   font-size: 0.85rem;
