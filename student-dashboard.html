@@ -112,7 +112,7 @@
 
             if (!myStudent) {
                 const banner = document.getElementById('noStudentRecordBanner');
-                if (banner) banner.hidden = false;
+                if (banner) banner.style.display = 'flex';
             }
         }
 
@@ -471,8 +471,8 @@
         </header>
 
         <!-- Not-yet-linked banner -->
-        <div id="noStudentRecordBanner" hidden class="glass-panel"
-            style="padding: 14px 18px; display: flex; align-items: center; gap: 10px; border-left: 4px solid var(--color-danger);">
+        <div id="noStudentRecordBanner" class="glass-panel"
+            style="display: none; padding: 14px 18px; align-items: center; gap: 10px; border-left: 4px solid var(--color-danger);">
             <i data-lucide="alert-triangle" style="width: 18px; height: 18px; color: var(--color-danger); flex-shrink: 0;"></i>
             <span>Your account isn't linked to a student record yet, so your borrow history can't be shown. Contact an admin if this doesn't resolve itself.</span>
         </div>

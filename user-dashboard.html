@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <!-- Applies the saved dark/light choice before first paint, so the page
+         never flashes light-mode then flips to dark. -->
+    <script>(function(){try{var t=localStorage.getItem('coeqroom-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CO-EQROOM - Account</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="Styles/styles-web.css">
+    <script src="Scripts/animations.js" defer></script>
+    <script src="Scripts/theme.js" defer></script>
+    <script type="module">
+        import { requireUser, logout } from './Scripts/auth-guard.js';
+
+        // ============================================================
+        // RESTRICTED ACCOUNT PAGE -- the only page an account with the
+        // `user` role can open. It shows who they're signed in as and
+        // that they don't have access to the equipment system yet.
+        // It deliberately loads NO equipment, student or transaction
+        // data. requireUser() sends admins and students to their own
+        // areas, and anyone signed out back to the login page.
+        // ============================================================
+
+        const { session, profile } = await requireUser();
+        // A redirect has already been triggered -- stop here.
+        if (!session) throw new Error('Redirecting: not a restricted-user session.');
+
+        document.getElementById('logoutNavLink')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            logout();
+        });
+
+        const NAME_FIELDS = ['full_name', 'fullname', 'name', 'display_name'];
+        function pickName(obj, fallback) {
+            if (!obj) return fallback;
+            for (const field of NAME_FIELDS) {
+                if (obj[field]) return obj[field];
+            }
+            return fallback;
+        }
+
+        const displayName = pickName(profile, session.user.user_metadata?.full_name || session.user.email);
+        const roleLabel = profile?.role || 'user';
+
+        document.querySelectorAll('.js-user-name').forEach((el) => { el.textContent = displayName; });
+        document.querySelectorAll('.js-user-email').forEach((el) => { el.textContent = session.user.email || '\u2014'; });
+        document.querySelectorAll('.js-user-role').forEach((el) => { el.textContent = roleLabel; });
+
+        const joined = session.user.created_at
+            ? new Date(session.user.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+            : '\u2014';
+        document.getElementById('accountJoined').textContent = joined;
+
+        // If an admin has since promoted this account, re-running the guard
+        // sends them to the right place. A reload does exactly that.
+        document.getElementById('btnCheckAccess')?.addEventListener('click', () => {
+            window.location.reload();
+        });
+    </script>
+</head>
+
+<body>
+    <!-- Decorative background glass orbs -->
+    <div class="bg-blob bg-blob-1"></div>
+    <div class="bg-blob bg-blob-2"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="brand-banner">
+            <div class="brand-icon-shield">
+                <i data-lucide="shield" style="width: 26px; height: 26px;"></i>
+            </div>
+            <div class="brand-text">
+                <h1>CO-EQROOM</h1>
+                <p>IoT-Based Equipment<br>Room Management<br>System</p>
+            </div>
+            <button class="btn-sidebar-collapse" id="sidebarCollapseBtn" aria-label="Toggle sidebar width"
+                title="Minimize Sidebar">
+                <i data-lucide="chevron-left" style="width: 18px; height: 18px;"></i>
+            </button>
+        </div>
+
+        <nav class="dashboard-nav">
+            <a href="user-dashboard.html" class="nav-link active" data-tooltip="My Account">
+                <i data-lucide="user"></i>
+                <span>My Account</span>
+            </a>
+            <button type="button" class="nav-link theme-toggle-btn" id="themeToggleBtn" aria-pressed="false" data-tooltip="Toggle Dark Mode" style="margin-top: auto;">
+                <i data-lucide="moon" data-theme-icon></i>
+                <span>Dark Mode</span>
+            </button>
+            <a href="index.html" class="nav-link" id="logoutNavLink" data-tooltip="Logout">
+                <i data-lucide="log-out"></i>
+                <span>Logout</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-profile-chip">
+                <div class="user-profile-info">
+                    <div class="avatar">
+                        <i data-lucide="user" style="color: #6B7280; width: 22px; height: 22px;"></i>
+                    </div>
+                    <div class="profile-meta">
+                        <h4 class="js-user-name">User</h4>
+                        <p class="js-user-role">user</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Top Header Bar -->
+        <header class="top-header">
+            <div class="header-left">
+                <button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation">
+                    <i data-lucide="menu"></i>
+                </button>
+                <h2 class="page-title">My Account</h2>
+            </div>
+            <div class="header-right">
+                <div class="live-datetime">
+                    <div class="datetime-item">
+                        <i data-lucide="calendar"></i>
+                        <span id="liveDate">-----</span>
+                    </div>
+                    <span class="datetime-separator">|</span>
+                    <div class="datetime-item">
+                        <i data-lucide="clock"></i>
+                        <span id="liveTime">-----</span>
+                    </div>
+                </div>
+                <div class="header-user">
+                    <div class="avatar" style="width: 34px; height: 34px;">
+                        <i data-lucide="user" style="color: #6B7280; width: 18px; height: 18px;"></i>
+                    </div>
+                    <span class="js-user-name" style="font-weight: 700; font-size: 0.88rem;">User</span>
+                </div>
+            </div>
+        </header>
+
+        <section class="dash-bottom-grid">
+            <!-- Access status -->
+            <div class="glass-panel">
+                <div class="card-title-bar">
+                    <h3>Access Status</h3>
+                </div>
+                <div class="door-status-box">
+                    <div class="lock-big-circle">
+                        <i data-lucide="lock" style="width: 48px; height: 48px;"></i>
+                    </div>
+                    <h4 class="door-status-title">ACCESS RESTRICTED</h4>
+                    <p class="door-status-sub">Awaiting role assignment</p>
+                    <p class="door-last-access" style="max-width: 360px; text-align: center;">
+                        Your account doesn't have access to the CO-EQROOM equipment system yet.
+                        Please contact an administrator to have your account set up.
+                    </p>
+
+                    <div class="door-action-row">
+                        <button class="btn-unlock-outline" id="btnCheckAccess" type="button">
+                            <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                            <span>Check Access Again</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Account details -->
+            <div class="glass-panel">
+                <div class="card-title-bar">
+                    <h3>Account Details</h3>
+                </div>
+                <div class="system-status-list">
+                    <div class="system-status-item">
+                        <div class="status-item-left">
+                            <i data-lucide="user"></i>
+                            <span>Full Name</span>
+                        </div>
+                        <span class="status-pill closed js-user-name">&mdash;</span>
+                    </div>
+
+                    <div class="system-status-item">
+                        <div class="status-item-left">
+                            <i data-lucide="mail"></i>
+                            <span>Email</span>
+                        </div>
+                        <span class="status-pill closed js-user-email">&mdash;</span>
+                    </div>
+
+                    <div class="system-status-item">
+                        <div class="status-item-left">
+                            <i data-lucide="badge-check"></i>
+                            <span>Role</span>
+                        </div>
+                        <span class="status-pill closed js-user-role" style="text-transform: capitalize;">&mdash;</span>
+                    </div>
+
+                    <div class="system-status-item">
+                        <div class="status-item-left">
+                            <i data-lucide="calendar"></i>
+                            <span>Member Since</span>
+                        </div>
+                        <span class="status-pill closed" id="accountJoined">&mdash;</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer Copyright -->
+        <footer class="app-footer">
+            &copy; 2026 EquipRoom. All rights reserved.
+        </footer>
+    </main>
+</body>
+
+</html>
