@@ -48,10 +48,9 @@ if (loginForm) {
       return;
     }
 
-    // Route by role: admins land on the management dashboard, everyone
-    // else (students) lands on their own read-only portal. Falls back to
-    // the student portal if the profiles row/role can't be read for any
-    // reason, since that's the safer default.
+    // Route by role: admins land on the management dashboard, students on
+    // their portal, and everyone else (role 'user', or a role that can't be
+    // read) on the restricted page -- the safe default.
     let role = null;
     if (data.user) {
       const { data: profile } = await supabase
@@ -61,7 +60,10 @@ if (loginForm) {
         .single();
       role = profile?.role || null;
     }
-    window.location.href = role === 'admin' ? 'dashboard.html' : 'student-dashboard.html';
+    window.location.href =
+      role === 'admin' ? 'dashboard.html' :
+      role === 'student' ? 'student-dashboard.html' :
+      'user-dashboard.html';
   });
 }
 
