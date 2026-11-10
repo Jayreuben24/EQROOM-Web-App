@@ -220,7 +220,7 @@
             if (pending) {
                 if (doorStatusTitle) doorStatusTitle.textContent = row.command === 'unlock' ? 'UNLOCKING…' : 'LOCKING…';
                 if (doorStatusSub) doorStatusSub.textContent = 'Waiting for door controller…';
-                if (btnRemoteUnlock) btnRemoteUnlock.disabled = true;
+                if (btnRemoteUnlock) btnRemoteUnlock.disabled = false;
                 return;
             }
 
